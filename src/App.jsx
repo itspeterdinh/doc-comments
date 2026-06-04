@@ -1,5 +1,19 @@
-import { useRef } from 'react';
-import { annotations } from './data';
+import { useRef, useState } from 'react';
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+  arrayMove,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import { annotations as initialAnnotations } from './data';
 import './App.css';
 
 function openAnswerWindow(annotation, winRef) {
@@ -74,23 +88,80 @@ function openAnswerWindow(annotation, winRef) {
   w.document.close();
 }
 
+function SortableItem({ ann, index, winRef }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id: ann.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.4 : 1,
+  };
+
+  return (
+    <li
+      ref={setNodeRef}
+      style={style}
+      className="sidebar-item"
+      onClick={() => openAnswerWindow(ann, winRef)}
+    >
+      <span
+        className="drag-handle"
+        {...attributes}
+        {...listeners}
+        onClick={(e) => e.stopPropagation()}
+      >
+        ⠿
+      </span>
+      <span className="sidebar-index">{index}</span>
+      <span className="sidebar-reminder">{ann.reminder}</span>
+    </li>
+  );
+}
+
 export default function App() {
   const winRef = useRef(null);
+  const [annotations, setAnnotations] = useState(initialAnnotations);
+
+  const visible = annotations.filter((ann) => ann.enabled);
+
+  const sensors = useSensors(useSensor(PointerSensor));
+
+  function handleDragEnd(event) {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    setAnnotations((prev) => {
+      const oldIndex = prev.findIndex((a) => a.id === active.id);
+      const newIndex = prev.findIndex((a) => a.id === over.id);
+      return arrayMove(prev, oldIndex, newIndex);
+    });
+  }
+
   return (
     <div className="layout">
       <aside className="sidebar">
         <div className="sidebar-header">Interview Questions</div>
         <ul className="sidebar-list">
-          {annotations.filter((ann) => ann.enabled).map((ann, index) => (
-            <li
-              key={ann.id}
-              className="sidebar-item"
-              onClick={() => openAnswerWindow(ann, winRef)}
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
+          >
+            <SortableContext
+              items={visible.map((a) => a.id)}
+              strategy={verticalListSortingStrategy}
             >
-              <span className="sidebar-index">{index}</span>
-              <span className="sidebar-reminder">{ann.reminder}</span>
-            </li>
-          ))}
+              {visible.map((ann, index) => (
+                <SortableItem
+                  key={ann.id}
+                  ann={ann}
+                  index={index}
+                  winRef={winRef}
+                />
+              ))}
+            </SortableContext>
+          </DndContext>
         </ul>
       </aside>
 

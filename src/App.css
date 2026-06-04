@@ -44,6 +44,20 @@ body {
   flex: 1;
 }
 
+.drag-handle {
+  color: #555570;
+  cursor: grab;
+  font-size: 1rem;
+  line-height: 1;
+  padding-top: 2px;
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.drag-handle:active {
+  cursor: grabbing;
+}
+
 .sidebar-item {
   display: flex;
   align-items: flex-start;
