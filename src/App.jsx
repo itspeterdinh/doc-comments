@@ -81,13 +81,13 @@ export default function App() {
       <aside className="sidebar">
         <div className="sidebar-header">Interview Questions</div>
         <ul className="sidebar-list">
-          {annotations.map((ann) => (
+          {annotations.filter((ann) => ann.enabled).map((ann, index) => (
             <li
               key={ann.id}
               className="sidebar-item"
               onClick={() => openAnswerWindow(ann, winRef)}
             >
-              <span className="sidebar-index">{ann.id}</span>
+              <span className="sidebar-index">{index}</span>
               <span className="sidebar-reminder">{ann.reminder}</span>
             </li>
           ))}
