@@ -52,6 +52,7 @@ While the application is sleeping, the actual I2C protocol runs entirely in the 
 
 I also built in retry logic for hardware NACKs, and specifically sequenced the order of operations to work around a known silicon errata where the bus would freeze if interrupts were disabled prematurely. Ultimately, it gave the application team a thread-safe, highly reliable API while hiding all the ISR complexity.`,
   },
+  {
     id: 8,
     reminder: 'How did you design the task schedule and time constraints?',
     answer: `The task hierarchy I work within was defined at the platform level before me — it's documented in a header that lays out every task's priority relative to tskIDLE_PRIORITY. The organizing principle is the audio frame deadline: the DSP task runs at the highest priority, the codec controller just below it, shell and USB and HID at the same mid-tier, and housekeeping and button-manager near idle. The interrupt priorities pair with that — DMA, USB device, and I²S are clustered at one NVIC priority level so they don't preempt each other mid-transaction, while peripheral control like I²C and SPI sit at lower NVIC priority because they're slower housekeeping.
