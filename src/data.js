@@ -52,13 +52,21 @@ While the application is sleeping, the actual I2C protocol runs entirely in the 
 
 I also built in retry logic for hardware NACKs, and specifically sequenced the order of operations to work around a known silicon errata where the bus would freeze if interrupts were disabled prematurely. Ultimately, it gave the application team a thread-safe, highly reliable API while hiding all the ISR complexity.`,
   },
-  {
     id: 8,
+    reminder: 'How did you design the task schedule and time constraints?',
+    answer: `The task hierarchy I work within was defined at the platform level before me — it's documented in a header that lays out every task's priority relative to tskIDLE_PRIORITY. The organizing principle is the audio frame deadline: the DSP task runs at the highest priority, the codec controller just below it, shell and USB and HID at the same mid-tier, and housekeeping and button-manager near idle. The interrupt priorities pair with that — DMA, USB device, and I²S are clustered at one NVIC priority level so they don't preempt each other mid-transaction, while peripheral control like I²C and SPI sit at lower NVIC priority because they're slower housekeeping.
+	
+What I do design is the timing contract for any new task I add. When I added the audio prompt shell command, the question was: what priority should it run at, what's its worst-case execution time, what state does it share with the audio task, and how is that state protected. The answer: priority 4 (same tier as other shell commands), short execution time per invocation, shares parameter state with the audio task at priority 6, protected by control_mutex with priority inheritance so the shell can never starve the audio task. That's the design discipline — work within the existing priority architecture, prove your new task fits the audio frame deadline, and protect shared state with the right primitive.
+
+On time constraints, the platform's binding constraint is the audio frame budget — at our sample rate and frame size, that's the deadline every cycle. We have a CI test that fails any build where the worst-case frame exceeds 80% of the budget, so the time constraint is encoded as an automated gate, not just a guideline.`,
+  },
+  {
+    id: 9,
     reminder: 'Tell me about a time you failed or made a mistake',
     answer: `One mistake I'll own: I was bringing up a new evaluation board, and we'd decided to reuse the firmware from a previous EVB in the same product family because the SoC was identical. I made the assumption that since the chip was the same, the firmware would just boot — and I didn't carefully diff the two schematics before flashing. What I missed was that several GPIOs had been remapped on the new board — different pins assigned to the codec reset line, an LED, and one of the bus enable signals. When I flashed and powered the board, it hung in early init because it was toggling the wrong pins. The codec never came out of reset, so nothing downstream worked. I burned the better part of a day debugging it before I went back to the schematic, did a proper pin-by-pin diff against the previous board, and saw the changes. Once I updated the pin definitions in the firmware, it came up cleanly on the next flash. The fix was simple, but the wasted day was avoidable. The habit I built after that: before reusing any firmware on a new board, I do a side-by-side schematic compare for at least the SoC pinout, the power rails, and the bus connections. I now keep a short checklist for board reuse — what to verify before flashing — and I share it with anyone else taking over similar bring-up work on our team. The bigger lesson was that 'same chip' doesn't mean 'same board.' Even small hardware changes need an explicit firmware audit, not an assumption.`,
   },
   {
-    id: 9,
+    id: 10,
     reminder: 'Tell me about a time you took initiative / solved a bottleneck',
     answer: `During an AEC integration project, I noticed something that was slowing the whole team down. The AEC algorithm had a handful of tuning parameters — the adaptive filter length, the NLMS step size, the double-talk-detector threshold, the residual echo suppressor gain, and the comfort noise level — and they were all hardcoded as constants in the source. Every time the audio tuning engineer wanted to try a different value to test echo cancellation quality, we had to change the constant, recompile the firmware, reflash the device, capture a recording, and listen. That round-trip took several minutes per parameter tweak, and we were doing dozens of tweaks per session.
 
@@ -67,17 +75,6 @@ Nobody assigned this to me, but it was clearly killing iteration speed. I spent 
 The iteration cycle for parameter tuning dropped from minutes to seconds. The audio engineers started running tuning sessions on their own without needing me in the loop, which freed me up for other work. As a side benefit, the same wrapper became the foundation for automated tuning experiments later — we could script parameter sweeps and capture metrics without human intervention.
 
 The thing I'm proudest of in that work is that I didn't wait for someone to ask. I saw the bottleneck, recognized that the fix was small relative to the friction it would remove, and built it.`,
-  },
-  {
-    id: 10,
-    reminder: 'Tell me about a time you had to learn something new quickly',
-    answer: `One example I think about a lot: when I first started getting hardware bring-up tasks on new evaluation boards, I had to learn to read schematics and navigate component data-sheets quickly. My background is computer science — I came in solid on the software side but with essentially no formal training in reading schematics or working with hardware data-sheets. The first time someone handed me a new EVB and said 'bring this up,' I realized I had to ramp fast.
-
-The way I approached it: I sat with the schematic for the new board and the schematic for a board I'd already worked on side by side, and I traced every signal from the SoC pin to the destination. That forced me to learn the symbols, the naming conventions, the pull-up and pull-down patterns, the level-shifting between voltage domains — by comparison rather than from a textbook. For the codec data-sheet, instead of trying to read it cover to cover, I'd jump to the section relevant to whatever I was wiring up that day — power sequencing, I2C register map, I2S configuration — and work through just that piece in depth.
-
-After a few boards, I was comfortable enough that I could open a new schematic, identify the audio codec, find the I2C and I2S signals, check the pin musing on the SoC side, and know which data-sheet pages I'd need before writing any code.
-
-The lesson for me was that hardware fluency, for a software engineer, is best built on a real bring-up rather than from a textbook. Side-by-side schematic comparison is the technique I'd recommend to anyone going through the same transition.`,
   },
   {
     id: 11,
@@ -98,5 +95,16 @@ The fix that actually worked came from stepping back and looking at the system. 
 The unglamorous part was re-deriving every buffer size and frame-sync timing at the new rate. Once it was stitched up, the chain ran with comfortable margin and shipped.
 
 The lesson I took: when you're MIPS-bound, the biggest wins usually aren't in the inner loop — they're one level up, in questioning the assumptions about what has to run at what rate.`,
+  },
+  {
+    id: 13,
+    reminder: 'Tell me about a time you had to learn something new quickly',
+    answer: `One example I think about a lot: when I first started getting hardware bring-up tasks on new evaluation boards, I had to learn to read schematics and navigate component data-sheets quickly. My background is computer science — I came in solid on the software side but with essentially no formal training in reading schematics or working with hardware data-sheets. The first time someone handed me a new EVB and said 'bring this up,' I realized I had to ramp fast.
+
+The way I approached it: I sat with the schematic for the new board and the schematic for a board I'd already worked on side by side, and I traced every signal from the SoC pin to the destination. That forced me to learn the symbols, the naming conventions, the pull-up and pull-down patterns, the level-shifting between voltage domains — by comparison rather than from a textbook. For the codec data-sheet, instead of trying to read it cover to cover, I'd jump to the section relevant to whatever I was wiring up that day — power sequencing, I2C register map, I2S configuration — and work through just that piece in depth.
+
+After a few boards, I was comfortable enough that I could open a new schematic, identify the audio codec, find the I2C and I2S signals, check the pin musing on the SoC side, and know which data-sheet pages I'd need before writing any code.
+
+The lesson for me was that hardware fluency, for a software engineer, is best built on a real bring-up rather than from a textbook. Side-by-side schematic comparison is the technique I'd recommend to anyone going through the same transition.`,
   },
 ];
