@@ -224,6 +224,16 @@ body {
   border-color: #7c6af7;
 }
 
+.mic-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.mic-btn.connected {
+  background: #e9f7ee;
+  border-color: #2eaa55;
+}
+
 .mic-btn.listening {
   background: #ffe5e5;
   border-color: #e44;

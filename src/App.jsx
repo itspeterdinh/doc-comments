@@ -1,6 +1,7 @@
 import { useRef, useState, useEffect } from 'react';
-import { loadFromCloud, saveToCloud } from './jsonbin';
+import { loadFromCloud, saveToCloud } from './firebase';
 import { embed, cosine, pickBestTitle } from './openai';
+import { transcribe } from './whisper';
 import {
   DndContext,
   closestCenter,
@@ -15,7 +16,6 @@ import {
   arrayMove,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { annotations as seedAnnotations } from './data';
 import './App.css';
 
 function openAnswerWindow(annotation, winRef) {
@@ -79,6 +79,9 @@ function openAnswerWindow(annotation, winRef) {
         "answerWindowPos",
         JSON.stringify({ left: window.screenX, top: window.screenY })
       );
+    });
+    window.addEventListener("keydown", function(e) {
+      if (e.key === "Escape") window.close();
     });
   </script>
 </head>
@@ -163,6 +166,14 @@ function EditorModal({ initial, onSave, onClose }) {
   const [reminder, setReminder] = useState(initial?.reminder || '');
   const [answer, setAnswer] = useState(initial?.answer || '');
 
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
   function handleSave() {
     if (!reminder.trim()) return;
     onSave({ reminder: reminder.trim(), answer });
@@ -231,6 +242,98 @@ export default function App() {
   }
 
   const finalTranscriptRef = useRef('');
+  const [callConnected, setCallConnected] = useState(false);
+  const [callListening, setCallListening] = useState(false);
+  const callStreamRef = useRef(null);
+  const callActiveRef = useRef(false);
+
+  async function connectCallTab() {
+    if (callConnected) {
+      // Disconnect
+      callActiveRef.current = false;
+      callStreamRef.current?.getTracks().forEach((t) => t.stop());
+      callStreamRef.current = null;
+      setCallConnected(false);
+      setCallListening(false);
+      return;
+    }
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getDisplayMedia({
+        video: true,
+        audio: true,
+      });
+    } catch (e) {
+      console.error('Tab share canceled or failed:', e);
+      return;
+    }
+    if (stream.getAudioTracks().length === 0) {
+      alert(
+        'No audio in shared stream. Re-share the tab and tick "Share tab audio".',
+      );
+      stream.getTracks().forEach((t) => t.stop());
+      return;
+    }
+    callStreamRef.current = stream;
+    setCallConnected(true);
+
+    const cleanup = () => {
+      callActiveRef.current = false;
+      callStreamRef.current = null;
+      setCallConnected(false);
+      setCallListening(false);
+    };
+    stream.getVideoTracks()[0]?.addEventListener('ended', cleanup);
+    stream.getAudioTracks()[0]?.addEventListener('ended', cleanup);
+  }
+
+  function toggleCallRecording() {
+    if (!callConnected || !callStreamRef.current) return;
+
+    if (callListening) {
+      callActiveRef.current = false;
+      setCallListening(false);
+      return;
+    }
+
+    const audioStream = new MediaStream(
+      callStreamRef.current.getAudioTracks(),
+    );
+    callActiveRef.current = true;
+    setCallListening(true);
+
+    const CHUNK_MS = 6000;
+    const startCycle = () => {
+      if (!callActiveRef.current) return;
+      const chunks = [];
+      const recorder = new MediaRecorder(audioStream, {
+        mimeType: 'audio/webm',
+      });
+      recorder.ondataavailable = (ev) => {
+        if (ev.data.size > 0) chunks.push(ev.data);
+      };
+      recorder.onstop = async () => {
+        if (callActiveRef.current) startCycle();
+        if (chunks.length === 0) return;
+        const blob = new Blob(chunks, { type: 'audio/webm' });
+        try {
+          const text = await transcribe(blob);
+          if (!text) return;
+          console.log('🎧 Call chunk:', text);
+          setSearch(text);
+          openTopSemanticMatch(text);
+        } catch (e) {
+          console.error('Transcription failed:', e);
+        }
+      };
+      recorder.start();
+      setTimeout(
+        () => recorder.state !== 'inactive' && recorder.stop(),
+        CHUNK_MS,
+      );
+    };
+    startCycle();
+  }
 
   function toggleListening() {
     const SpeechRecognition =
@@ -290,16 +393,12 @@ export default function App() {
           Array.isArray(record) &&
           record.length > 0 &&
           record[0]?.reminder;
-        if (isValid) {
-          setAnnotations(record);
-        } else {
-          setAnnotations(seedAnnotations);
-        }
+        setAnnotations(isValid ? record : []);
         setLoaded(true);
       })
       .catch((err) => {
         console.error(err);
-        setAnnotations(seedAnnotations);
+        setAnnotations([]);
         setLoaded(true);
       });
   }, []);
@@ -504,6 +603,31 @@ export default function App() {
               >
                 {listening ? '🛑' : '🎤'}
               </button>
+              <button
+                className={`mic-btn ${callConnected ? 'connected' : ''}`}
+                title={
+                  callConnected
+                    ? 'Disconnect tab'
+                    : 'Connect to Teams tab (share with audio)'
+                }
+                onClick={connectCallTab}
+              >
+                {callConnected ? '🔗' : '➕'}
+              </button>
+              <button
+                className={`mic-btn ${callListening ? 'listening' : ''}`}
+                title={
+                  !callConnected
+                    ? 'Connect a tab first'
+                    : callListening
+                      ? 'Stop transcribing'
+                      : 'Start transcribing call'
+                }
+                onClick={toggleCallRecording}
+                disabled={!callConnected}
+              >
+                {callListening ? '🛑' : '🎧'}
+              </button>
             </div>
             {searchMatches.length > 0 && (
               <ul className="search-results">
@@ -531,22 +655,22 @@ export default function App() {
           {!loaded ? (
             <div className="main-hint">Loading…</div>
           ) : (
-            <table className="dashboard-table">
-              <thead>
-                <tr>
-                  <th></th>
-                  <th>Show</th>
-                  <th>Reminder</th>
-                  <th>Answer preview</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                <DndContext
-                  sensors={sensors}
-                  collisionDetection={closestCenter}
-                  onDragEnd={handleDragEnd}
-                >
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragEnd={handleDragEnd}
+            >
+              <table className="dashboard-table">
+                <thead>
+                  <tr>
+                    <th></th>
+                    <th>Show</th>
+                    <th>Reminder</th>
+                    <th>Answer preview</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
                   <SortableContext
                     items={annotations.map((a) => a.id)}
                     strategy={verticalListSortingStrategy}
@@ -562,9 +686,9 @@ export default function App() {
                       />
                     ))}
                   </SortableContext>
-                </DndContext>
-              </tbody>
-            </table>
+                </tbody>
+              </table>
+            </DndContext>
           )}
         </div>
       </main>
