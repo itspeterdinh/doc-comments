@@ -1,5 +1,6 @@
 import { useRef, useState, useEffect } from 'react';
 import { loadFromCloud, saveToCloud } from './jsonbin';
+import { embed, cosine, pickBestTitle } from './openai';
 import {
   DndContext,
   closestCenter,
@@ -91,10 +92,7 @@ function openAnswerWindow(annotation, winRef) {
 
 function SidebarItem({ ann, index, winRef }) {
   return (
-    <li
-      className="sidebar-item"
-      onClick={() => openAnswerWindow(ann, winRef)}
-    >
+    <li className="sidebar-item" onClick={() => openAnswerWindow(ann, winRef)}>
       <span className="sidebar-index">{index}</span>
       <span className="sidebar-reminder">{ann.reminder}</span>
     </li>
@@ -102,8 +100,14 @@ function SidebarItem({ ann, index, winRef }) {
 }
 
 function DashboardRow({ ann, onToggle, onEdit, onDelete, winRef }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
-    useSortable({ id: ann.id });
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: ann.id });
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -119,11 +123,7 @@ function DashboardRow({ ann, onToggle, onEdit, onDelete, winRef }) {
       className={ann.enabled ? '' : 'row-disabled'}
     >
       <td className="cell-drag">
-        <span
-          className="drag-handle"
-          {...attributes}
-          {...listeners}
-        >
+        <span className="drag-handle" {...attributes} {...listeners}>
           ⠿
         </span>
       </td>
@@ -139,9 +139,7 @@ function DashboardRow({ ann, onToggle, onEdit, onDelete, winRef }) {
       </td>
       <td className="cell-reminder">{ann.reminder}</td>
       <td className="cell-answer">
-        {ann.answer.length > 120
-          ? ann.answer.slice(0, 120) + '…'
-          : ann.answer}
+        {ann.answer.length > 120 ? ann.answer.slice(0, 120) + '…' : ann.answer}
       </td>
       <td className="cell-actions">
         <button
@@ -153,10 +151,7 @@ function DashboardRow({ ann, onToggle, onEdit, onDelete, winRef }) {
         <button className="dash-btn" onClick={() => onEdit(ann)}>
           Edit
         </button>
-        <button
-          className="dash-btn danger"
-          onClick={() => onDelete(ann.id)}
-        >
+        <button className="dash-btn danger" onClick={() => onDelete(ann.id)}>
           Delete
         </button>
       </td>
@@ -214,6 +209,28 @@ export default function App() {
   const [selectedSearchIndex, setSelectedSearchIndex] = useState(0);
   const [listening, setListening] = useState(false);
   const recognitionRef = useRef(null);
+  const [queryEmbedding, setQueryEmbedding] = useState(null);
+  const [embedding, setEmbedding] = useState(false);
+
+  async function openTopSemanticMatch(query) {
+    const items = annotations.filter((a) => a.enabled);
+    if (items.length === 0) return;
+    try {
+      const titles = items.map((a) => a.reminder);
+      const idx = await pickBestTitle(query, titles);
+      console.log('Voice query:', query, '→', titles[idx]);
+      const target = items[idx];
+      if (target) {
+        openAnswerWindow(target, winRef);
+        setSearch('');
+        setSelectedSearchIndex(0);
+      }
+    } catch (e) {
+      console.error('Voice match failed:', e);
+    }
+  }
+
+  const finalTranscriptRef = useRef('');
 
   function toggleListening() {
     const SpeechRecognition =
@@ -226,22 +243,42 @@ export default function App() {
       recognitionRef.current?.stop();
       return;
     }
+    finalTranscriptRef.current = '';
     const recog = new SpeechRecognition();
     recog.lang = 'en-US';
     recog.interimResults = true;
-    recog.continuous = false;
+    recog.continuous = true; // keep listening until our silence timer stops it
+
+    const SILENCE_MS = 7000;
+    let silenceTimer = null;
+    const resetSilenceTimer = () => {
+      clearTimeout(silenceTimer);
+      silenceTimer = setTimeout(() => recog.stop(), SILENCE_MS);
+    };
+
     recog.onresult = (e) => {
       const transcript = Array.from(e.results)
         .map((r) => r[0].transcript)
         .join('');
+      finalTranscriptRef.current = transcript;
       setSearch(transcript);
       setSelectedSearchIndex(0);
+      resetSilenceTimer();
     };
-    recog.onend = () => setListening(false);
-    recog.onerror = () => setListening(false);
+    recog.onend = () => {
+      clearTimeout(silenceTimer);
+      setListening(false);
+      const q = finalTranscriptRef.current.trim();
+      if (q) openTopSemanticMatch(q);
+    };
+    recog.onerror = () => {
+      clearTimeout(silenceTimer);
+      setListening(false);
+    };
     recognitionRef.current = recog;
     recog.start();
     setListening(true);
+    resetSilenceTimer(); // start the timer immediately in case nothing is said
   }
 
   // Load from cloud on mount; seed from data.js if cloud is empty
@@ -276,14 +313,74 @@ export default function App() {
     return () => clearTimeout(t);
   }, [annotations, loaded]);
 
+  // Generate embeddings for any annotations missing a current-version embedding.
+  // Bump EMBED_VERSION when changing what we embed (e.g. title-only → title+answer).
+  useEffect(() => {
+    if (!loaded) return;
+    const EMBED_VERSION = 2;
+    const missing = annotations.filter(
+      (a) => !a.embedding || a.embeddingVersion !== EMBED_VERSION,
+    );
+    if (missing.length === 0) return;
+    (async () => {
+      for (const ann of missing) {
+        try {
+          const text = `${ann.reminder}\n\n${ann.answer}`;
+          const vec = await embed(text);
+          setAnnotations((prev) =>
+            prev.map((a) =>
+              a.id === ann.id
+                ? { ...a, embedding: vec, embeddingVersion: EMBED_VERSION }
+                : a,
+            ),
+          );
+        } catch (e) {
+          console.error('Embed failed for', ann.reminder, e);
+          break; // stop on first error (likely missing key/quota)
+        }
+      }
+    })();
+  }, [loaded, annotations]);
+
+  // Debounced semantic embedding of the query (only fires for non-empty search)
+  useEffect(() => {
+    if (!search.trim()) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setEmbedding(true);
+    const t = setTimeout(async () => {
+      try {
+        const vec = await embed(search);
+        setQueryEmbedding(vec);
+      } catch (e) {
+        console.error(e);
+        setQueryEmbedding(null);
+      } finally {
+        setEmbedding(false);
+      }
+    }, 300);
+    return () => clearTimeout(t);
+  }, [search]);
+
   const visible = annotations.filter((ann) => ann.enabled);
   const sensors = useSensors(useSensor(PointerSensor));
 
-  const searchMatches = search.trim()
-    ? annotations.filter((a) =>
+  let searchMatches = [];
+  if (search.trim()) {
+    if (queryEmbedding) {
+      // Semantic ranking
+      searchMatches = annotations
+        .filter((a) => a.embedding)
+        .map((a) => ({ ann: a, score: cosine(queryEmbedding, a.embedding) }))
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 8)
+        .map((x) => x.ann);
+    } else {
+      // Fallback: substring while embedding is still computing
+      searchMatches = annotations.filter((a) =>
         a.reminder.toLowerCase().includes(search.toLowerCase()),
-      )
-    : [];
+      );
+    }
+  }
 
   function handleSearchKey(e) {
     if (searchMatches.length === 0) return;
@@ -359,12 +456,7 @@ export default function App() {
         </div>
         <ul className="sidebar-list">
           {visible.map((ann, index) => (
-            <SidebarItem
-              key={ann.id}
-              ann={ann}
-              index={index}
-              winRef={winRef}
-            />
+            <SidebarItem key={ann.id} ann={ann} index={index} winRef={winRef} />
           ))}
         </ul>
       </aside>
@@ -390,11 +482,17 @@ export default function App() {
               <input
                 type="text"
                 className="search-input"
-                placeholder="Search annotation title… (↑↓ navigate, Enter to open)"
+                placeholder={
+                  embedding
+                    ? 'Thinking…'
+                    : 'Search by meaning or keyword… (↑↓ navigate, Enter to open)'
+                }
                 value={search}
                 onChange={(e) => {
-                  setSearch(e.target.value);
+                  const v = e.target.value;
+                  setSearch(v);
                   setSelectedSearchIndex(0);
+                  if (!v.trim()) setQueryEmbedding(null);
                 }}
                 onKeyDown={handleSearchKey}
                 autoFocus
@@ -413,7 +511,9 @@ export default function App() {
                   <li
                     key={ann.id}
                     className={
-                      i === selectedSearchIndex ? 'search-hit selected' : 'search-hit'
+                      i === selectedSearchIndex
+                        ? 'search-hit selected'
+                        : 'search-hit'
                     }
                     onMouseEnter={() => setSelectedSearchIndex(i)}
                     onClick={() => {
