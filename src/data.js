@@ -27,6 +27,12 @@ Sonatus’s mission to orchestrate seamless OTA updates and campaign management 
   },
   {
     id: crypto.randomUUID(),
+    enabled: false,
+    reminder: 'Why Amphenol',
+    answer: `Amphenol High Speed Products Group is the market leader enabling the global electronics and telecom revolution across Tier 1 OEMs. The opportunity to develop embedded firmware for cutting-edge 400G, 800G, and next-generation 1.6T optical modules means working on the bleeding edge of data center infrastructure. It is a chance to solve high-bandwidth, low-latency communication challenges where firmware efficiency and protocol optimization (like CMIS) directly impact global internet scaling.`,
+  },
+  {
+    id: crypto.randomUUID(),
     enabled: true,
     reminder: 'Why Tarana Wireless?',
     answer: `I am drawn to the Embedded Software Engineer position at Tarata Wireless because it presents the perfect opportunity to apply my deep background in hard real-time DSP systems to the telecommunications domain. My core engineering drive has always been at the intersection of low-level hardware bring-up and deterministic software execution. Transitioning from audio signal processing to wireless communications offers the exact kind of high-stakes architectural challenges—like complex modulation, high-speed sampling, and filtering on internally developed SoCs—that I want to tackle next.
