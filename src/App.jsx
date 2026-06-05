@@ -210,6 +210,39 @@ export default function App() {
   const [annotations, setAnnotations] = useState([]);
   const [loaded, setLoaded] = useState(false);
   const [editing, setEditing] = useState(null); // null | { ann } | { ann: null } for new
+  const [search, setSearch] = useState('');
+  const [selectedSearchIndex, setSelectedSearchIndex] = useState(0);
+  const [listening, setListening] = useState(false);
+  const recognitionRef = useRef(null);
+
+  function toggleListening() {
+    const SpeechRecognition =
+      window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      alert('Speech recognition not supported in this browser. Try Chrome.');
+      return;
+    }
+    if (listening) {
+      recognitionRef.current?.stop();
+      return;
+    }
+    const recog = new SpeechRecognition();
+    recog.lang = 'en-US';
+    recog.interimResults = true;
+    recog.continuous = false;
+    recog.onresult = (e) => {
+      const transcript = Array.from(e.results)
+        .map((r) => r[0].transcript)
+        .join('');
+      setSearch(transcript);
+      setSelectedSearchIndex(0);
+    };
+    recog.onend = () => setListening(false);
+    recog.onerror = () => setListening(false);
+    recognitionRef.current = recog;
+    recog.start();
+    setListening(true);
+  }
 
   // Load from cloud on mount; seed from data.js if cloud is empty
   useEffect(() => {
@@ -245,6 +278,36 @@ export default function App() {
 
   const visible = annotations.filter((ann) => ann.enabled);
   const sensors = useSensors(useSensor(PointerSensor));
+
+  const searchMatches = search.trim()
+    ? annotations.filter((a) =>
+        a.reminder.toLowerCase().includes(search.toLowerCase()),
+      )
+    : [];
+
+  function handleSearchKey(e) {
+    if (searchMatches.length === 0) return;
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setSelectedSearchIndex((i) => (i + 1) % searchMatches.length);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setSelectedSearchIndex(
+        (i) => (i - 1 + searchMatches.length) % searchMatches.length,
+      );
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      const target = searchMatches[selectedSearchIndex];
+      if (target) {
+        openAnswerWindow(target, winRef);
+        setSearch('');
+        setSelectedSearchIndex(0);
+      }
+    } else if (e.key === 'Escape') {
+      setSearch('');
+      setSelectedSearchIndex(0);
+    }
+  }
 
   function handleDragEnd(event) {
     const { active, over } = event;
@@ -321,6 +384,49 @@ export default function App() {
                 + New
               </button>
             </div>
+          </div>
+          <div className="search-bar">
+            <div className="search-row">
+              <input
+                type="text"
+                className="search-input"
+                placeholder="Search annotation title… (↑↓ navigate, Enter to open)"
+                value={search}
+                onChange={(e) => {
+                  setSearch(e.target.value);
+                  setSelectedSearchIndex(0);
+                }}
+                onKeyDown={handleSearchKey}
+                autoFocus
+              />
+              <button
+                className={`mic-btn ${listening ? 'listening' : ''}`}
+                title={listening ? 'Stop listening' : 'Start voice search'}
+                onClick={toggleListening}
+              >
+                {listening ? '🛑' : '🎤'}
+              </button>
+            </div>
+            {searchMatches.length > 0 && (
+              <ul className="search-results">
+                {searchMatches.map((ann, i) => (
+                  <li
+                    key={ann.id}
+                    className={
+                      i === selectedSearchIndex ? 'search-hit selected' : 'search-hit'
+                    }
+                    onMouseEnter={() => setSelectedSearchIndex(i)}
+                    onClick={() => {
+                      openAnswerWindow(ann, winRef);
+                      setSearch('');
+                      setSelectedSearchIndex(0);
+                    }}
+                  >
+                    {ann.reminder}
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
           {!loaded ? (
             <div className="main-hint">Loading…</div>
