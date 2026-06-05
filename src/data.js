@@ -5,10 +5,7 @@ export const annotations = [
     reminder: 'Introduction',
     answer: `Over the past four years as an Embedded Software Engineer at Nuvoton, I helped complete the build system and unified C/C++ firmware base that now powers over 30 distinct audio products. The platform is operating across multiple SoC families—including Cortex-M0, Cortex-M4 DSP, NPCA, and NPCP—I work within a modular, layered architecture that bridges vendor BSPs with a common API layer, utilizing Kconfig to dynamically select features, operating systems, and routing topologies for each product application. My day-to-day execution spans low-level hardware bring-up, integrating complex DSP algorithms into graph-based audio chains, and implementing runtime control interfaces. Because the entire runtime is strictly governed by the audio frame deadline, I ensure DSP tasks maintain absolute top priority for deterministic execution.
 
-    To bridge the gap between software and hardware design, I also drove our pre-silicon validation efforts. I developed robust Python tooling to compare bit-exact and tolerance-based outputs between RTL simulations and FPGA bring-ups. By automating per-vector pass/fail verdicts, calculating critical error statistics (Max/RMS/SNR), and generating side-by-side waveform plots, I successfully caught logic divergences before tape-out and significantly shortened the hardware sign-off iteration time.
-
-    The contributions I'm proudest of: integrating AEC and RNNoise into a unified voice front-end and solving a MIPS overrun with a system-level rate split that cut compute roughly 30x; building the runtime parameter control layer that turned tuning iteration from minutes down to seconds; and adding a continuous integration cycle-budget test that catches algorithm-integration regressions before release.
-`,
+    Short version: I'm an embedded software engineer at Nuvoton. We make audio MCUs — chips with an ARM Cortex-M core, audio peripherals, and DSP for things like echo cancellation. I work on a shared C and C++ firmware platform that ships across more than 30 products. Day to day that breaks into three things: integrating audio algorithms — AEC, noise suppression, EQ, limiters — into the platform's DSP chain; bringing up new boards by configuring the chip's peripherals and the audio codec; and debugging across the hardware-firmware boundary when something doesn't behave the way the design says it should.`,
   },
   {
     id: crypto.randomUUID(),
@@ -27,13 +24,13 @@ Sonatus’s mission to orchestrate seamless OTA updates and campaign management 
   },
   {
     id: crypto.randomUUID(),
-    enabled: false,
+    enabled: true,
     reminder: 'Why Amphenol',
     answer: `Amphenol High Speed Products Group is the market leader enabling the global electronics and telecom revolution across Tier 1 OEMs. The opportunity to develop embedded firmware for cutting-edge 400G, 800G, and next-generation 1.6T optical modules means working on the bleeding edge of data center infrastructure. It is a chance to solve high-bandwidth, low-latency communication challenges where firmware efficiency and protocol optimization (like CMIS) directly impact global internet scaling.`,
   },
   {
     id: crypto.randomUUID(),
-    enabled: true,
+    enabled: false,
     reminder: 'Why Tarana Wireless?',
     answer: `I am drawn to the Embedded Software Engineer position at Tarata Wireless because it presents the perfect opportunity to apply my deep background in hard real-time DSP systems to the telecommunications domain. My core engineering drive has always been at the intersection of low-level hardware bring-up and deterministic software execution. Transitioning from audio signal processing to wireless communications offers the exact kind of high-stakes architectural challenges—like complex modulation, high-speed sampling, and filtering on internally developed SoCs—that I want to tackle next.
 
