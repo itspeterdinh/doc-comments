@@ -27,6 +27,12 @@ Sonatus’s mission to orchestrate seamless OTA updates and campaign management 
   },
   {
     id: crypto.randomUUID(),
+    enabled: false,
+    reminder: 'Why Amphenol',
+    answer: `Amphenol High Speed Products Group is the market leader enabling the global electronics and telecom revolution across Tier 1 OEMs. The opportunity to develop embedded firmware for cutting-edge 400G, 800G, and next-generation 1.6T optical modules means working on the bleeding edge of data center infrastructure. It is a chance to solve high-bandwidth, low-latency communication challenges where firmware efficiency and protocol optimization (like CMIS) directly impact global internet scaling.`,
+  },
+  {
+    id: crypto.randomUUID(),
     enabled: true,
     reminder: 'Why Tarana Wireless?',
     answer: `I am drawn to the Embedded Software Engineer position at Tarata Wireless because it presents the perfect opportunity to apply my deep background in hard real-time DSP systems to the telecommunications domain. My core engineering drive has always been at the intersection of low-level hardware bring-up and deterministic software execution. Transitioning from audio signal processing to wireless communications offers the exact kind of high-stakes architectural challenges—like complex modulation, high-speed sampling, and filtering on internally developed SoCs—that I want to tackle next.
@@ -37,11 +43,13 @@ At a technical level, Tarata’s environment directly mirrors where I operate be
     id: crypto.randomUUID(),
     enabled: true,
     reminder: 'GDP Debugging / Hardware Debugging',
-    answer: `On the firmware side, I am very comfortable tracking down complex system issues. I use the Nu-Link probe and GDB within NuEclipse not just for standard execution control, but for deeper memory and RTOS analysis. For example, I recently used GDB watchpoints to track down a complex buffer overflow. We had a situation where data was behaving completely unexpectedly because adjacent memory was being silently corrupted. Instead of guessing, I set a hardware watchpoint on the corrupted variable's address, and the moment the rogue pointer wrote past its bounds, GDB halted the processor and gave me the exact backtrace.
+    answer: `On the firmware side, I am very comfortable tracking down system issues. For day-to-day logic bugs, my normal workflow is to drop into debug mode using the Nu-Link device and step through the code execution line by line within NuEclipse.
+
+However, beyond just standard execution control, I also rely heavily on GDB for deeper memory and RTOS analysis. For example, I recently used GDB watchpoints to track down a complex buffer overflow. We had a situation where data was behaving unexpectedly because adjacent memory was being silently corrupted. Instead of guessing, I set a hardware watchpoint on the corrupted variable's address, and the moment the pointer wrote past its bounds, GDB halted the processor and gave me the exact backtrace.
 
 When it comes to the physical hardware layer—like using oscilloscopes and logic analyzers—I will be completely honest: that hasn't historically been my primary domain, but it is an area where I am actively building my skillset right now.
 
-Recently, I was tasked with bringing up a new evaluation board. While it is based on the architecture I am used to, there were several changes to the pin muxing and the peripheral routing. To verify those changes, I couldn't just rely on the software; I had to get hands-on in the lab. I have been using a logic analyzer and scope to physically trace the signals and prove that my new pin configurations and peripheral drivers are actually doing what they are supposed to do on the metal. It has been a great learning experience that is really rounding out my ability to own the full hardware-software boundary.`,
+Recently, I was tasked with bringing up a new evaluation board. While it is based on the architecture I am used to, there were several changes to the pin muxing and the peripheral routing. To verify those changes, I couldn't just rely on stepping through the software; I had to get hands-on in the lab. I have been using a logic analyzer and scope to physically trace the signals and prove that my new pin configurations and peripheral drivers are actually doing what they are supposed to do on the metal. It has been a great learning experience that is really rounding out my ability to own the full hardware-software boundary.`,
   },
   {
     id: crypto.randomUUID(),
@@ -59,11 +67,15 @@ The skill there isn't reading the whole datasheet — it's knowing which registe
 
 To manage that level of scale, the architecture is broken down into three strict layers:
 
-At the foundation is the vendor BSP for low-level hardware abstraction. The middle layer is our core engine. It houses our peripheral drivers—like I2S and DMA buffer management—alongside our common and private DSP algorithms, such as Acoustic Echo Cancellation and noise suppression. The top application layer is where system integration happens. It uses a topology graph-based system to dynamically route audio paths, sitting right alongside a parameter control layer for real-time tuning.
+At the foundation is the vendor BSP for low-level hardware abstraction. The middle layer is our core engine. It houses our peripheral drivers—like I2S, I2C, SPI, and DMA buffer management—alongside our common and private DSP algorithms, such as Acoustic Echo Cancellation and noise suppression.
 
-Because of this modular design, adding a new product variant is seamless. By simply writing a Kconfig entry and a few header overrides for things like pin muxing and codec selection, that single source tree cleanly compiles into over 30 unique firmware images.
+The top application layer is where we bring everything together for each product.
+This is where the system startup sequence runs. It configures the peripheral drivers for the specific board, and it creates the product's tasks with their correct priorities.
+This layer also owns the audio routing graph. It defines exactly which DSP modules are present and how they are wired together. Sitting right next to that is the parameter control layer. It allows us to use shell commands to change settings on the fly, so our audio engineers can tune the system live without having to recompile the firmware.
 
-Of course, audio is highly sensitive to timing—missing a cycle budget means an audible pop. I architected the runtime so the DSP task sits at the absolute highest FreeRTOS priority, waking strictly from DMA interrupts via queues. To protect shared state without stalling this critical path, I use priority-inheritance mutexes for task-to-task communication, ensuring the audio thread is never starved by a lower-priority task.`,
+Because the design is so modular, adding a new product is easy. All we do is write a new Kconfig entry and tweak a few headers for the pin mux and codec. From there, that one single source tree compiles perfectly into more than thirty different firmware images.
+
+Of course, audio is highly sensitive to timing—missing a cycle budget means an audible pop. We architected the runtime so the DSP task sits at the absolute highest FreeRTOS priority, waking strictly from DMA interrupts via queues. To protect shared state without stalling this critical path, we use priority-inheritance mutexes for task-to-task communication, ensuring the audio thread is never starved by a lower-priority task.`,
   },
   {
     id: crypto.randomUUID(),
@@ -101,7 +113,7 @@ Of course, audio is highly sensitive to timing—missing a cycle budget means an
     reminder: 'I2C driver architecture',
     answer: `One of the core pieces of infrastructure I built was the I2C driver that sits between the vendor BSP and our application layer.
 
-The main architectural goal was to take a complex, interrupt-driven hardware peripheral and convert it into a clean, synchronous API for the application developers. So, instead of the application team having to manage hardware interrupts, they just call a function like master_read or master_write, and it behaves like a standard blocking call.
+The main architectural goal was to take a complex, interrupt-driven hardware peripheral and convert it into a clean, synchronous API. So, instead of having to manage hardware interrupts at the application layer, I just call a function like master_read or master_write, and it behaves like a standard blocking call.
 
 Under the hood, here is how I made that work: When the application makes the request, the driver immediately grabs a mutex to lock the bus, kicks off the hardware's 'START' condition, and then puts the calling task to sleep on a FreeRTOS queue. This immediately yields the CPU so other tasks can run.
 
