@@ -18,6 +18,19 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import './App.css';
 
+// Always work with reminder as an array of variants.
+// Tolerates legacy data where reminder was a single string.
+function getVariants(ann) {
+  if (Array.isArray(ann.reminder)) return ann.reminder.filter(Boolean);
+  if (typeof ann.reminder === 'string' && ann.reminder.trim())
+    return [ann.reminder];
+  return [];
+}
+
+function primaryReminder(ann) {
+  return getVariants(ann)[0] || '(untitled)';
+}
+
 function openAnswerWindow(annotation, winRef) {
   if (winRef.current && !winRef.current.closed) {
     winRef.current.close();
@@ -35,11 +48,12 @@ function openAnswerWindow(annotation, winRef) {
   if (!w) return;
   winRef.current = w;
   const body = annotation.answer.replace(/\n/g, '<br>');
+  const title = primaryReminder(annotation);
   w.document.write(`<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8" />
-  <title>${annotation.reminder}</title>
+  <title>${title}</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -86,7 +100,7 @@ function openAnswerWindow(annotation, winRef) {
   </script>
 </head>
 <body>
-  <h2>${annotation.reminder}</h2>
+  <h2>${title}</h2>
   <p>${body}</p>
 </body>
 </html>`);
@@ -97,7 +111,7 @@ function SidebarItem({ ann, index, winRef }) {
   return (
     <li className="sidebar-item" onClick={() => openAnswerWindow(ann, winRef)}>
       <span className="sidebar-index">{index}</span>
-      <span className="sidebar-reminder">{ann.reminder}</span>
+      <span className="sidebar-reminder">{primaryReminder(ann)}</span>
     </li>
   );
 }
@@ -140,10 +154,7 @@ function DashboardRow({ ann, onToggle, onEdit, onDelete, winRef }) {
           <span className="slider"></span>
         </label>
       </td>
-      <td className="cell-reminder">{ann.reminder}</td>
-      <td className="cell-answer">
-        {ann.answer.length > 120 ? ann.answer.slice(0, 120) + '…' : ann.answer}
-      </td>
+      <td className="cell-reminder">{primaryReminder(ann)}</td>
       <td className="cell-actions">
         <button
           className="dash-btn"
@@ -163,7 +174,8 @@ function DashboardRow({ ann, onToggle, onEdit, onDelete, winRef }) {
 }
 
 function EditorModal({ initial, onSave, onClose }) {
-  const [reminder, setReminder] = useState(initial?.reminder || '');
+  const initialVariants = initial ? getVariants(initial).join('\n') : '';
+  const [reminder, setReminder] = useState(initialVariants);
   const [answer, setAnswer] = useState(initial?.answer || '');
 
   useEffect(() => {
@@ -175,8 +187,12 @@ function EditorModal({ initial, onSave, onClose }) {
   }, [onClose]);
 
   function handleSave() {
-    if (!reminder.trim()) return;
-    onSave({ reminder: reminder.trim(), answer });
+    const variants = reminder
+      .split('\n')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (variants.length === 0) return;
+    onSave({ reminder: variants, answer });
   }
 
   return (
@@ -184,11 +200,14 @@ function EditorModal({ initial, onSave, onClose }) {
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <h3>{initial ? 'Edit annotation' : 'New annotation'}</h3>
         <label>
-          Reminder (title)
-          <input
-            type="text"
+          Reminder / question variants (one per line)
+          <textarea
+            rows={5}
             value={reminder}
             onChange={(e) => setReminder(e.target.value)}
+            placeholder={
+              'Tell me about a time you failed\nDescribe a mistake you made\nShare a setback you faced'
+            }
             autoFocus
           />
         </label>
@@ -222,12 +241,29 @@ export default function App() {
   const recognitionRef = useRef(null);
   const [queryEmbedding, setQueryEmbedding] = useState(null);
   const [embedding, setEmbedding] = useState(false);
+  const [embeddingStatus, setEmbeddingStatus] = useState({
+    pending: 0,
+    total: 0,
+    justFinished: false,
+    error: null,
+  });
+
+  // Auto-hide the "up to date" pill 5s after it appears
+  useEffect(() => {
+    if (!embeddingStatus.justFinished) return;
+    const t = setTimeout(
+      () => setEmbeddingStatus((s) => ({ ...s, justFinished: false })),
+      5000,
+    );
+    return () => clearTimeout(t);
+  }, [embeddingStatus.justFinished]);
 
   async function openTopSemanticMatch(query) {
     const items = annotations.filter((a) => a.enabled);
     if (items.length === 0) return;
     try {
-      const titles = items.map((a) => a.reminder);
+      // Send all variants joined per item so the router sees every phrasing
+      const titles = items.map((a) => getVariants(a).join(' | '));
       const idx = await pickBestTitle(query, titles);
       console.log('Voice query:', query, '→', titles[idx]);
       const target = items[idx];
@@ -287,18 +323,27 @@ export default function App() {
     stream.getAudioTracks()[0]?.addEventListener('ended', cleanup);
   }
 
+  const sessionBufferRef = useRef([]);
+
   function toggleCallRecording() {
     if (!callConnected || !callStreamRef.current) return;
 
     if (callListening) {
       callActiveRef.current = false;
       setCallListening(false);
+      // On stop, run search on the accumulated session text
+      const fullText = sessionBufferRef.current.join(' ').trim();
+      sessionBufferRef.current = [];
+      if (fullText) {
+        console.log('🔎 Running search on full session:', fullText);
+        setSearch(fullText);
+        openTopSemanticMatch(fullText);
+      }
       return;
     }
 
-    const audioStream = new MediaStream(
-      callStreamRef.current.getAudioTracks(),
-    );
+    sessionBufferRef.current = [];
+    const audioStream = new MediaStream(callStreamRef.current.getAudioTracks());
     callActiveRef.current = true;
     setCallListening(true);
 
@@ -319,9 +364,40 @@ export default function App() {
         try {
           const text = await transcribe(blob);
           if (!text) return;
-          console.log('🎧 Call chunk:', text);
-          setSearch(text);
-          openTopSemanticMatch(text);
+
+          // Filter out noise / nonsense chunks
+          const cleaned = text.trim();
+          const wordCount = cleaned.split(/\s+/).filter(Boolean).length;
+          const hasLetters = /[a-zA-Z]/.test(cleaned);
+          const MIN_WORDS = 4;
+          const MIN_CHARS = 15;
+          // Common Whisper hallucinations on silence / music
+          const HALLUCINATIONS = [
+            'thank you',
+            'thanks for watching',
+            'thanks for listening',
+            'you',
+            '.',
+            'bye',
+            'okay',
+            'ok',
+          ];
+          const isHallucination = HALLUCINATIONS.includes(
+            cleaned.toLowerCase().replace(/[.!?]/g, '').trim(),
+          );
+
+          if (
+            !hasLetters ||
+            wordCount < MIN_WORDS ||
+            cleaned.length < MIN_CHARS ||
+            isHallucination
+          ) {
+            console.log('🔇 Skipped (too short / noise):', cleaned);
+            return;
+          }
+
+          console.log('🎧 Call chunk:', cleaned);
+          sessionBufferRef.current.push(cleaned);
         } catch (e) {
           console.error('Transcription failed:', e);
         }
@@ -352,7 +428,7 @@ export default function App() {
     recog.interimResults = true;
     recog.continuous = true; // keep listening until our silence timer stops it
 
-    const SILENCE_MS = 7000;
+    const SILENCE_MS = 1000;
     let silenceTimer = null;
     const resetSilenceTimer = () => {
       clearTimeout(silenceTimer);
@@ -403,6 +479,19 @@ export default function App() {
       });
   }, []);
 
+  // Keyboard shortcut: Alt+R toggles call recording (only when a tab is connected)
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.altKey && (e.key === 'r' || e.key === 'R' || e.code === 'KeyR')) {
+        if (!callConnected) return;
+        e.preventDefault();
+        toggleCallRecording();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [callConnected]);
+
   // Save to cloud (debounced) whenever annotations change after initial load
   useEffect(() => {
     if (!loaded) return;
@@ -416,15 +505,37 @@ export default function App() {
   // Bump EMBED_VERSION when changing what we embed (e.g. title-only → title+answer).
   useEffect(() => {
     if (!loaded) return;
-    const EMBED_VERSION = 2;
+    const EMBED_VERSION = 3;
     const missing = annotations.filter(
-      (a) => !a.embedding || a.embeddingVersion !== EMBED_VERSION,
+      (a) =>
+        getVariants(a).length > 0 &&
+        (!a.embedding || a.embeddingVersion !== EMBED_VERSION),
     );
-    if (missing.length === 0) return;
+    if (missing.length === 0) {
+      if (embeddingStatus.pending > 0) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        setEmbeddingStatus({
+          pending: 0,
+          total: 0,
+          justFinished: true,
+          error: null,
+        });
+        console.log('✅ All embeddings up to date');
+      }
+      return;
+    }
+    setEmbeddingStatus((s) => ({
+      pending: missing.length,
+      total: Math.max(s.total, missing.length),
+      justFinished: false,
+      error: null,
+    }));
+    console.log(`🔄 Regenerating ${missing.length} embedding(s)…`);
     (async () => {
       for (const ann of missing) {
         try {
-          const text = `${ann.reminder}\n\n${ann.answer}`;
+          // Embed only the reminder/question variants, not the answer
+          const text = getVariants(ann).join('\n');
           const vec = await embed(text);
           setAnnotations((prev) =>
             prev.map((a) =>
@@ -433,8 +544,15 @@ export default function App() {
                 : a,
             ),
           );
+          console.log('  ✓ Embedded:', primaryReminder(ann));
         } catch (e) {
-          console.error('Embed failed for', ann.reminder, e);
+          console.error('Embed failed for', primaryReminder(ann), e);
+          setEmbeddingStatus({
+            pending: 0,
+            total: 0,
+            justFinished: false,
+            error: e.message,
+          });
           break; // stop on first error (likely missing key/quota)
         }
       }
@@ -466,17 +584,19 @@ export default function App() {
   let searchMatches = [];
   if (search.trim()) {
     if (queryEmbedding) {
-      // Semantic ranking
+      // Semantic ranking — only over enabled (shown) items
       searchMatches = annotations
-        .filter((a) => a.embedding)
+        .filter((a) => a.enabled && a.embedding)
         .map((a) => ({ ann: a, score: cosine(queryEmbedding, a.embedding) }))
         .sort((a, b) => b.score - a.score)
         .slice(0, 8)
         .map((x) => x.ann);
     } else {
       // Fallback: substring while embedding is still computing
-      searchMatches = annotations.filter((a) =>
-        a.reminder.toLowerCase().includes(search.toLowerCase()),
+      const q = search.toLowerCase();
+      searchMatches = annotations.filter(
+        (a) =>
+          a.enabled && getVariants(a).some((r) => r.toLowerCase().includes(q)),
       );
     }
   }
@@ -568,6 +688,24 @@ export default function App() {
               <span>
                 {visible.length} shown · {annotations.length} total
               </span>
+              {embeddingStatus.pending > 0 ? (
+                <span className="embed-status embed-status--working">
+                  🔄 Updating embeddings…{' '}
+                  {embeddingStatus.total - embeddingStatus.pending}/
+                  {embeddingStatus.total}
+                </span>
+              ) : embeddingStatus.error ? (
+                <span
+                  className="embed-status embed-status--error"
+                  title={embeddingStatus.error}
+                >
+                  ⚠️ Embedding error
+                </span>
+              ) : embeddingStatus.justFinished ? (
+                <span className="embed-status embed-status--ok">
+                  ✓ Embeddings up to date
+                </span>
+              ) : null}
               <button
                 className="add-btn-lg"
                 onClick={() => setEditing({ ann: null })}
@@ -614,20 +752,6 @@ export default function App() {
               >
                 {callConnected ? '🔗' : '➕'}
               </button>
-              <button
-                className={`mic-btn ${callListening ? 'listening' : ''}`}
-                title={
-                  !callConnected
-                    ? 'Connect a tab first'
-                    : callListening
-                      ? 'Stop transcribing'
-                      : 'Start transcribing call'
-                }
-                onClick={toggleCallRecording}
-                disabled={!callConnected}
-              >
-                {callListening ? '🛑' : '🎧'}
-              </button>
             </div>
             {searchMatches.length > 0 && (
               <ul className="search-results">
@@ -646,7 +770,7 @@ export default function App() {
                       setSelectedSearchIndex(0);
                     }}
                   >
-                    {ann.reminder}
+                    {primaryReminder(ann)}
                   </li>
                 ))}
               </ul>
@@ -666,16 +790,21 @@ export default function App() {
                     <th></th>
                     <th>Show</th>
                     <th>Reminder</th>
-                    <th>Answer preview</th>
                     <th>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   <SortableContext
-                    items={annotations.map((a) => a.id)}
+                    items={[
+                      ...annotations.filter((a) => a.enabled),
+                      ...annotations.filter((a) => !a.enabled),
+                    ].map((a) => a.id)}
                     strategy={verticalListSortingStrategy}
                   >
-                    {annotations.map((ann) => (
+                    {[
+                      ...annotations.filter((a) => a.enabled),
+                      ...annotations.filter((a) => !a.enabled),
+                    ].map((ann) => (
                       <DashboardRow
                         key={ann.id}
                         ann={ann}
@@ -699,6 +828,20 @@ export default function App() {
           onSave={saveEdit}
           onClose={() => setEditing(null)}
         />
+      )}
+
+      {callConnected && (
+        <button
+          className={`floating-record ${callListening ? 'listening' : ''}`}
+          title={
+            callListening
+              ? 'Stop transcribing (Alt+R)'
+              : 'Start transcribing call (Alt+R)'
+          }
+          onClick={toggleCallRecording}
+        >
+          {callListening ? '🛑' : '🎧'}
+        </button>
       )}
     </div>
   );
