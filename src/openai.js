@@ -2,28 +2,43 @@ const API_KEY = import.meta.env.VITE_OPENAI_API_KEY;
 const MODEL = 'text-embedding-3-small';
 const DIMENSIONS = 256; // smaller = cheaper storage, still high quality
 
-export async function embed(text) {
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+export async function embed(text, { maxAttempts = 4 } = {}) {
   if (!API_KEY || API_KEY === 'your_openai_key_here') {
     throw new Error('OpenAI API key not configured');
   }
-  const res = await fetch('https://api.openai.com/v1/embeddings', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${API_KEY}`,
-    },
-    body: JSON.stringify({
-      model: MODEL,
-      input: text,
-      dimensions: DIMENSIONS,
-    }),
-  });
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`OpenAI embed failed: ${err}`);
+  let lastErr;
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const res = await fetch('https://api.openai.com/v1/embeddings', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: MODEL,
+        input: text,
+        dimensions: DIMENSIONS,
+      }),
+    });
+    if (res.ok) {
+      const json = await res.json();
+      return json.data[0].embedding;
+    }
+    const errText = await res.text();
+    lastErr = new Error(`OpenAI embed failed (${res.status}): ${errText}`);
+    // Retry on 429 (rate limit) or 5xx
+    if (res.status === 429 || res.status >= 500) {
+      const retryAfter = parseFloat(res.headers.get('retry-after')) || 0;
+      const backoff = retryAfter > 0 ? retryAfter * 1000 : 500 * 2 ** attempt;
+      console.warn(`Embed retry ${attempt + 1}/${maxAttempts} after ${backoff}ms (${res.status})`);
+      await sleep(backoff);
+      continue;
+    }
+    throw lastErr; // non-retryable
   }
-  const json = await res.json();
-  return json.data[0].embedding;
+  throw lastErr;
 }
 
 export async function pickBestTitle(query, titles) {
@@ -44,12 +59,22 @@ export async function pickBestTitle(query, titles) {
       messages: [
         {
           role: 'system',
-          content:
-            'You are a router. Given a user query and a numbered list of titles, pick the single title that best matches the intent of the query. Return JSON: {"index": <number>}.',
+          content: [
+            'You are a router for a live interview-assistance app.',
+            'The "query" is a raw speech-to-text transcript from a live conversation. It may contain:',
+            '- filler words ("um", "uh", "you know", "like"),',
+            '- false starts, restated questions, or self-corrections,',
+            '- side chatter or pleasantries before/after the actual question,',
+            '- multiple questions — in that case focus on the MOST RECENT (last-asked) question.',
+            'Your job: identify the underlying question being asked and pick the single best-matching title from the numbered list.',
+            'Each title may contain multiple variants separated by " | " — treat them as equivalent phrasings of the same underlying question.',
+            'If no title is a reasonable match, still return your closest guess.',
+            'Return JSON: {"index": <number>}.',
+          ].join(' '),
         },
         {
           role: 'user',
-          content: `Query: "${query}"\n\nTitles:\n${numbered}\n\nReturn JSON with the best-matching index.`,
+          content: `Live transcript (may be noisy):\n"""\n${query}\n"""\n\nTitles:\n${numbered}\n\nReturn JSON with the best-matching index.`,
         },
       ],
     }),

@@ -56,34 +56,43 @@ function openAnswerWindow(annotation, winRef) {
   <title>${title}</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { background: #14141f; }
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      background: #fff;
-      color: #1a1a1a;
+      color: #e4e4ec;
       padding: 28px 32px 40px;
     }
     h2 {
       font-size: 1rem;
       font-weight: 700;
-      color: #111;
+      color: #f0f0f8;
       margin-bottom: 18px;
       padding-bottom: 12px;
-      border-bottom: 2px solid #e8e8e8;
+      border-bottom: 2px solid #2a2a3e;
       line-height: 1.4;
     }
     p {
       font-size: 0.85rem;
       line-height: 1.85;
-      color: #222;
+      color: #d4d4e4;
+    }
+    ::selection {
+      background: #7c6af7;
+      color: #fff;
     }
   </style>
   <script>
     window.addEventListener("load", function() {
-      const body = document.body;
-      const w = Math.min(Math.max(body.scrollWidth  + 64, 400), 900);
-      const h = Math.min(Math.max(body.scrollHeight + 48, 200), 800);
       const saved = JSON.parse(window.opener && window.opener.localStorage.getItem("answerWindowPos") || "{}");
-      window.resizeTo(w, h);
+      // Prefer saved size; fall back to auto-fit-to-content.
+      if (saved.width != null && saved.height != null) {
+        window.resizeTo(saved.width, saved.height);
+      } else {
+        const body = document.body;
+        const w = Math.min(Math.max(body.scrollWidth  + 64, 400), 900);
+        const h = Math.min(Math.max(body.scrollHeight + 48, 200), 800);
+        window.resizeTo(w, h);
+      }
       if (saved.left != null && saved.top != null) {
         window.moveTo(saved.left, saved.top);
       }
@@ -91,11 +100,43 @@ function openAnswerWindow(annotation, winRef) {
     window.addEventListener("beforeunload", function() {
       window.opener && window.opener.localStorage.setItem(
         "answerWindowPos",
-        JSON.stringify({ left: window.screenX, top: window.screenY })
+        JSON.stringify({
+          left: window.screenX,
+          top: window.screenY,
+          width: window.outerWidth,
+          height: window.outerHeight,
+        })
       );
     });
     window.addEventListener("keydown", function(e) {
       if (e.key === "Escape") window.close();
+    });
+    // Click anywhere to toggle smooth auto-scroll from top to bottom.
+    let autoScrollId = null;
+    document.addEventListener("click", function() {
+      if (autoScrollId) {
+        cancelAnimationFrame(autoScrollId);
+        autoScrollId = null;
+        return;
+      }
+      const PIXELS_PER_SEC = 5; // tune speed here
+      let lastT = performance.now();
+      let pos = window.scrollY; // float; accumulates sub-pixel progress
+      const step = (t) => {
+        const dt = (t - lastT) / 1000;
+        lastT = t;
+        const max = document.documentElement.scrollHeight - window.innerHeight;
+        pos += PIXELS_PER_SEC * dt;
+        if (pos >= max) {
+          window.scrollTo({ top: max });
+          autoScrollId = null;
+          return;
+        }
+        window.scrollTo({ top: pos });
+        autoScrollId = requestAnimationFrame(step);
+      };
+      // Start from current position (top by default)
+      autoScrollId = requestAnimationFrame(step);
     });
   </script>
 </head>
@@ -532,7 +573,8 @@ export default function App() {
     }));
     console.log(`🔄 Regenerating ${missing.length} embedding(s)…`);
     (async () => {
-      for (const ann of missing) {
+      for (let i = 0; i < missing.length; i++) {
+        const ann = missing[i];
         try {
           // Embed only the reminder/question variants, not the answer
           const text = getVariants(ann).join('\n');
@@ -544,7 +586,15 @@ export default function App() {
                 : a,
             ),
           );
+          setEmbeddingStatus((s) => ({
+            ...s,
+            pending: Math.max(0, s.pending - 1),
+          }));
           console.log('  ✓ Embedded:', primaryReminder(ann));
+          // Small pacing delay to stay under rate limits
+          if (i < missing.length - 1) {
+            await new Promise((r) => setTimeout(r, 120));
+          }
         } catch (e) {
           console.error('Embed failed for', primaryReminder(ann), e);
           setEmbeddingStatus({
@@ -700,6 +750,19 @@ export default function App() {
                   title={embeddingStatus.error}
                 >
                   ⚠️ Embedding error
+                  <button
+                    className="embed-retry"
+                    onClick={() =>
+                      setEmbeddingStatus({
+                        pending: 0,
+                        total: 0,
+                        justFinished: false,
+                        error: null,
+                      })
+                    }
+                  >
+                    Retry
+                  </button>
                 </span>
               ) : embeddingStatus.justFinished ? (
                 <span className="embed-status embed-status--ok">

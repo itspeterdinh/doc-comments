@@ -6,8 +6,8 @@
 
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  background: #f0f0f0;
-  color: #1a1a1a;
+  background: #14141f;
+  color: #e4e4ec;
   min-height: 100vh;
 }
 
@@ -173,7 +173,7 @@ body {
 .dashboard-header h2 {
   font-size: 1.2rem;
   font-weight: 700;
-  color: #111;
+  color: #f0f0f8;
 }
 
 .dashboard-meta {
@@ -181,7 +181,7 @@ body {
   align-items: center;
   gap: 14px;
   font-size: 0.82rem;
-  color: #666;
+  color: #aaa;
 }
 
 .add-btn-lg {
@@ -211,8 +211,9 @@ body {
 .mic-btn {
   width: 44px;
   flex-shrink: 0;
-  background: #fff;
-  border: 1px solid #ddd;
+  background: #232336;
+  border: 1px solid #3a3a55;
+  color: #e4e4ec;
   border-radius: 6px;
   font-size: 1.1rem;
   cursor: pointer;
@@ -220,7 +221,7 @@ body {
 }
 
 .mic-btn:hover {
-  background: #f5f5fb;
+  background: #2e2e46;
   border-color: #7c6af7;
 }
 
@@ -249,11 +250,15 @@ body {
   flex: 1;
   padding: 10px 14px;
   font-size: 0.9rem;
-  border: 1px solid #ddd;
+  border: 1px solid #3a3a55;
   border-radius: 6px;
-  background: #fff;
-  color: #111;
+  background: #1e1e2e;
+  color: #f0f0f8;
   font-family: inherit;
+}
+
+.search-input::placeholder {
+  color: #6e6e90;
 }
 
 .search-input:focus {
@@ -268,21 +273,21 @@ body {
   left: 0;
   right: 0;
   list-style: none;
-  background: #fff;
-  border: 1px solid #e3e3e8;
+  background: #1e1e2e;
+  border: 1px solid #3a3a55;
   border-radius: 6px;
   max-height: 320px;
   overflow-y: auto;
   z-index: 20;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
 }
 
 .search-hit {
   padding: 8px 14px;
   font-size: 0.85rem;
-  color: #222;
+  color: #d4d4e4;
   cursor: pointer;
-  border-bottom: 1px solid #f0f0f4;
+  border-bottom: 1px solid #2a2a3e;
 }
 
 .search-hit:last-child {
@@ -297,24 +302,24 @@ body {
 .dashboard-table {
   width: 100%;
   border-collapse: collapse;
-  background: #fff;
+  background: #1e1e2e;
   border-radius: 6px;
   overflow: hidden;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
 }
 
 .dashboard-table th,
 .dashboard-table td {
   text-align: left;
   padding: 10px 14px;
-  border-bottom: 1px solid #eee;
+  border-bottom: 1px solid #2a2a3e;
   font-size: 0.82rem;
   vertical-align: top;
 }
 
 .dashboard-table th {
-  background: #f7f7fb;
-  color: #555;
+  background: #232336;
+  color: #aaa;
   font-weight: 600;
   font-size: 0.72rem;
   text-transform: uppercase;
@@ -322,7 +327,7 @@ body {
 }
 
 .dashboard-table tbody tr:hover {
-  background: #fafaff;
+  background: #262638;
 }
 
 .row-disabled .cell-reminder,
@@ -332,12 +337,12 @@ body {
 
 .cell-reminder {
   font-weight: 600;
-  color: #222;
+  color: #f0f0f8;
   width: auto;
 }
 
 .cell-answer {
-  color: #555;
+  color: #aaa;
   line-height: 1.45;
 }
 
@@ -359,28 +364,28 @@ body {
 }
 
 .dash-btn {
-  background: #fff;
-  border: 1px solid #ddd;
+  background: #2a2a3e;
+  border: 1px solid #3a3a55;
   padding: 5px 10px;
   border-radius: 4px;
   font-size: 0.78rem;
   cursor: pointer;
   margin-right: 4px;
-  color: #333;
+  color: #d4d4e4;
   font-family: inherit;
 }
 
 .dash-btn:hover {
-  background: #f0f0f0;
+  background: #353550;
 }
 
 .dash-btn.danger {
-  color: #c43030;
-  border-color: #e8b8b8;
+  color: #ff7a7a;
+  border-color: #553030;
 }
 
 .dash-btn.danger:hover {
-  background: #fde9e9;
+  background: #3a2020;
 }
 
 /* Toggle switch */
@@ -474,7 +479,8 @@ body {
 }
 
 .modal {
-  background: #fff;
+  background: #1e1e2e;
+  border: 1px solid #2a2a3e;
   border-radius: 8px;
   padding: 24px;
   width: 90%;
@@ -482,13 +488,13 @@ body {
   display: flex;
   flex-direction: column;
   gap: 14px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
 }
 
 .modal h3 {
   font-size: 1.05rem;
   font-weight: 700;
-  color: #111;
+  color: #f0f0f8;
 }
 
 .modal label {
@@ -497,7 +503,7 @@ body {
   gap: 6px;
   font-size: 0.78rem;
   font-weight: 600;
-  color: #444;
+  color: #aaa;
 }
 
 .modal input,
@@ -505,11 +511,16 @@ body {
   font-family: inherit;
   font-size: 0.88rem;
   padding: 8px 10px;
-  border: 1px solid #ddd;
+  border: 1px solid #3a3a55;
   border-radius: 4px;
-  color: #111;
-  background: #fff;
+  color: #f0f0f8;
+  background: #14141f;
   resize: vertical;
+}
+
+.modal input::placeholder,
+.modal textarea::placeholder {
+  color: #6e6e90;
 }
 
 .modal input:focus,
@@ -527,9 +538,9 @@ body {
 
 .modal-actions button {
   padding: 8px 16px;
-  border: 1px solid #ddd;
-  background: #fff;
-  color: #333;
+  border: 1px solid #3a3a55;
+  background: #2a2a3e;
+  color: #d4d4e4;
   border-radius: 4px;
   cursor: pointer;
   font-size: 0.85rem;
@@ -537,7 +548,7 @@ body {
 }
 
 .modal-actions button:hover {
-  background: #f5f5f5;
+  background: #353550;
 }
 
 .modal-actions button.primary {
@@ -558,9 +569,9 @@ body {
   width: 60px;
   height: 60px;
   border-radius: 50%;
-  border: none;
-  background: #fff;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+  border: 1px solid #3a3a55;
+  background: #232336;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
   font-size: 1.6rem;
   cursor: pointer;
   z-index: 150;
@@ -716,4 +727,20 @@ body {
 @keyframes fadeout {
   0%, 70% { opacity: 1; }
   100%    { opacity: 0; }
+}
+
+.embed-retry {
+  margin-left: 8px;
+  padding: 1px 8px;
+  font-size: 0.7rem;
+  background: transparent;
+  border: 1px solid currentColor;
+  color: inherit;
+  border-radius: 8px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.embed-retry:hover {
+  background: rgba(255, 255, 255, 0.1);
 }
