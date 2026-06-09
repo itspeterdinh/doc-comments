@@ -1,13 +1,20 @@
-const API_KEY = import.meta.env.VITE_OPENAI_API_KEY;
+import { resolveOpenAIKey } from './userKey';
+
 const MODEL = 'text-embedding-3-small';
 const DIMENSIONS = 256; // smaller = cheaper storage, still high quality
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-export async function embed(text, { maxAttempts = 4 } = {}) {
-  if (!API_KEY || API_KEY === 'your_openai_key_here') {
-    throw new Error('OpenAI API key not configured');
+function requireKey() {
+  const key = resolveOpenAIKey();
+  if (!key || key === 'your_openai_key_here') {
+    throw new Error('OpenAI API key not configured. Open Settings and add your own key.');
   }
+  return key;
+}
+
+export async function embed(text, { maxAttempts = 4 } = {}) {
+  const API_KEY = requireKey();
   let lastErr;
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     const res = await fetch('https://api.openai.com/v1/embeddings', {
@@ -42,9 +49,7 @@ export async function embed(text, { maxAttempts = 4 } = {}) {
 }
 
 export async function pickBestTitle(query, titles) {
-  if (!API_KEY || API_KEY === 'your_openai_key_here') {
-    throw new Error('OpenAI API key not configured');
-  }
+  const API_KEY = requireKey();
   const numbered = titles.map((t, i) => `${i}. ${t}`).join('\n');
   const res = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',

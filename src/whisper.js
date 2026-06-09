@@ -1,7 +1,8 @@
-const API_KEY = import.meta.env.VITE_OPENAI_API_KEY;
+import { resolveOpenAIKey } from './userKey';
 
 export async function transcribe(blob) {
-  if (!API_KEY) throw new Error('OpenAI API key not configured');
+  const API_KEY = resolveOpenAIKey();
+  if (!API_KEY) throw new Error('OpenAI API key not configured. Open Settings and add your own key.');
   const form = new FormData();
   form.append('file', blob, 'chunk.webm');
   form.append('model', 'whisper-1');

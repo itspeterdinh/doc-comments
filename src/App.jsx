@@ -1,5 +1,11 @@
 import { useRef, useState, useEffect } from 'react';
-import { loadFromCloud, saveToCloud } from './firebase';
+import {
+  loadFromCloud,
+  saveToCloud,
+  signInWithGoogle,
+  signOutUser,
+  onUserChange,
+} from './firebase';
 import { embed, cosine, pickBestTitle } from './openai';
 import { transcribe } from './whisper';
 import {
@@ -16,6 +22,7 @@ import {
   arrayMove,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import { getUserKey, setUserKey } from './userKey';
 import './App.css';
 
 // Always work with reminder as an array of variants.
@@ -119,7 +126,7 @@ function openAnswerWindow(annotation, winRef) {
         autoScrollId = null;
         return;
       }
-      const PIXELS_PER_SEC = 5; // tune speed here
+      const PIXELS_PER_SEC = 7; // tune speed here
       let lastT = performance.now();
       let pos = window.scrollY; // float; accumulates sub-pixel progress
       const step = (t) => {
@@ -271,11 +278,118 @@ function EditorModal({ initial, onSave, onClose }) {
   );
 }
 
+function SettingsModal({ onClose }) {
+  const [key, setKey] = useState(getUserKey());
+  const [reveal, setReveal] = useState(false);
+
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  function save() {
+    setUserKey(key);
+    onClose();
+  }
+  function clear() {
+    setUserKey('');
+    setKey('');
+  }
+
+  const masked = key
+    ? key.length > 11
+      ? key.slice(0, 7) + '…' + key.slice(-4)
+      : '••••••'
+    : '';
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <h3>Settings</h3>
+        <label>
+          Your OpenAI API key
+          <input
+            type={reveal ? 'text' : 'password'}
+            value={key}
+            onChange={(e) => setKey(e.target.value)}
+            placeholder="sk-..."
+            autoFocus
+            autoComplete="off"
+            spellCheck={false}
+          />
+        </label>
+        <div className="settings-hint">
+          Stored only in this browser (<code>localStorage</code>). It is sent
+          directly from your browser to OpenAI — never to our server.
+          {key && (
+            <div style={{ marginTop: 6 }}>
+              Currently saved: <code>{masked}</code>
+            </div>
+          )}
+        </div>
+        <div
+          className="modal-actions"
+          style={{ justifyContent: 'space-between' }}
+        >
+          <div>
+            <button onClick={() => setReveal((r) => !r)}>
+              {reveal ? 'Hide' : 'Reveal'}
+            </button>
+            {getUserKey() && (
+              <button
+                className="danger"
+                onClick={clear}
+                style={{ marginLeft: 6 }}
+              >
+                Clear saved key
+              </button>
+            )}
+          </div>
+          <div>
+            <button onClick={onClose}>Cancel</button>
+            <button
+              className="primary"
+              onClick={save}
+              style={{ marginLeft: 6 }}
+            >
+              Save
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const winRef = useRef(null);
+  const [user, setUser] = useState(null);
+  const [authReady, setAuthReady] = useState(false);
   const [annotations, setAnnotations] = useState([]);
   const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    return onUserChange((u) => {
+      setUser(u);
+      setAuthReady(true);
+      if (!u) {
+        // Signed out — clear local data
+        setAnnotations([]);
+        setLoaded(false);
+      }
+    });
+  }, []);
   const [editing, setEditing] = useState(null); // null | { ann } | { ann: null } for new
+  const [showSettings, setShowSettings] = useState(false);
+  const [hasUserKey, setHasUserKey] = useState(!!getUserKey());
+
+  function closeSettings() {
+    setShowSettings(false);
+    setHasUserKey(!!getUserKey());
+  }
   const [search, setSearch] = useState('');
   const [selectedSearchIndex, setSelectedSearchIndex] = useState(0);
   const [listening, setListening] = useState(false);
@@ -501,9 +615,10 @@ export default function App() {
     resetSilenceTimer(); // start the timer immediately in case nothing is said
   }
 
-  // Load from cloud on mount; seed from data.js if cloud is empty
+  // Load this user's annotations whenever they sign in / change
   useEffect(() => {
-    loadFromCloud()
+    if (!user) return;
+    loadFromCloud(user.uid)
       .then((record) => {
         const isValid =
           record &&
@@ -518,7 +633,7 @@ export default function App() {
         setAnnotations([]);
         setLoaded(true);
       });
-  }, []);
+  }, [user]);
 
   // Keyboard shortcut: Alt+R toggles call recording (only when a tab is connected)
   useEffect(() => {
@@ -535,17 +650,19 @@ export default function App() {
 
   // Save to cloud (debounced) whenever annotations change after initial load
   useEffect(() => {
-    if (!loaded) return;
+    if (!loaded || !user) return;
     const t = setTimeout(() => {
-      saveToCloud(annotations).catch(console.error);
+      saveToCloud(user.uid, annotations).catch(console.error);
     }, 500);
     return () => clearTimeout(t);
-  }, [annotations, loaded]);
+  }, [annotations, loaded, user]);
 
   // Generate embeddings for any annotations missing a current-version embedding.
   // Bump EMBED_VERSION when changing what we embed (e.g. title-only → title+answer).
   useEffect(() => {
     if (!loaded) return;
+    // Skip silently if no OpenAI key — semantic search just falls back to substring.
+    if (!getUserKey() && !import.meta.env.VITE_OPENAI_API_KEY) return;
     const EMBED_VERSION = 3;
     const missing = annotations.filter(
       (a) =>
@@ -612,6 +729,8 @@ export default function App() {
   // Debounced semantic embedding of the query (only fires for non-empty search)
   useEffect(() => {
     if (!search.trim()) return;
+    // Skip silently if no OpenAI key — substring fallback handles search.
+    if (!getUserKey() && !import.meta.env.VITE_OPENAI_API_KEY) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setEmbedding(true);
     const t = setTimeout(async () => {
@@ -717,11 +836,46 @@ export default function App() {
     setEditing(null);
   }
 
+  // Auth gate
+  if (!authReady) {
+    return (
+      <div className="signin-screen">
+        <div>Loading…</div>
+      </div>
+    );
+  }
+  if (!user) {
+    return (
+      <div className="signin-screen">
+        <div className="signin-card">
+          <h1>Interview Assistant</h1>
+          <p>Sign in with Google to access your questions and answers.</p>
+          <button
+            className="signin-btn"
+            onClick={() => signInWithGoogle().catch((e) => alert(e.message))}
+          >
+            Sign in with Google
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="layout">
       <aside className="sidebar">
         <div className="sidebar-header">
           <span>Interview Questions</span>
+          <div className="user-chip" title={user.email || user.displayName}>
+            {user.photoURL && <img src={user.photoURL} alt="" />}
+            <button
+              className="signout-link"
+              onClick={() => signOutUser()}
+              title="Sign out"
+            >
+              ⎋
+            </button>
+          </div>
         </div>
         <ul className="sidebar-list">
           {visible.map((ann, index) => (
@@ -732,6 +886,15 @@ export default function App() {
 
       <main className="main">
         <div className="dashboard">
+          {!hasUserKey && !import.meta.env.VITE_OPENAI_API_KEY && (
+            <div className="key-banner">
+              <span>
+                ⚠️ No OpenAI key configured. Voice & semantic search won't work
+                until you add your own key.
+              </span>
+              <button onClick={() => setShowSettings(true)}>Add key</button>
+            </div>
+          )}
           <div className="dashboard-header">
             <h2>Dashboard</h2>
             <div className="dashboard-meta">
@@ -774,6 +937,13 @@ export default function App() {
                 onClick={() => setEditing({ ann: null })}
               >
                 + New
+              </button>
+              <button
+                className="settings-btn"
+                title="Settings"
+                onClick={() => setShowSettings(true)}
+              >
+                ⚙
               </button>
             </div>
           </div>
@@ -892,6 +1062,8 @@ export default function App() {
           onClose={() => setEditing(null)}
         />
       )}
+
+      {showSettings && <SettingsModal onClose={closeSettings} />}
 
       {callConnected && (
         <button

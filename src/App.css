@@ -744,3 +744,153 @@ body {
 .embed-retry:hover {
   background: rgba(255, 255, 255, 0.1);
 }
+
+/* Settings button (next to + New) */
+.settings-btn {
+  background: #2a2a3e;
+  color: #d4d4e4;
+  border: 1px solid #3a3a55;
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  font-size: 1.1rem;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.settings-btn:hover {
+  background: #353550;
+  border-color: #7c6af7;
+}
+
+.settings-hint {
+  font-size: 0.75rem;
+  color: #8a8aa8;
+  line-height: 1.55;
+}
+
+.settings-hint code {
+  background: #14141f;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 0.72rem;
+  color: #c8c8e8;
+}
+
+.modal-actions button.danger {
+  border-color: #553030;
+  color: #ff7a7a;
+}
+
+.modal-actions button.danger:hover {
+  background: #3a2020;
+}
+
+/* Banner when no key is configured */
+.key-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 16px;
+  background: #3a2818;
+  border: 1px solid #6a4a20;
+  border-radius: 6px;
+  color: #f0d6a8;
+  font-size: 0.82rem;
+}
+
+.key-banner button {
+  background: #7c6af7;
+  color: #fff;
+  border: none;
+  padding: 5px 12px;
+  border-radius: 4px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.key-banner button:hover {
+  background: #6a5ae0;
+}
+
+/* Sign-in screen */
+.signin-screen {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #14141f;
+  color: #e4e4ec;
+}
+
+.signin-card {
+  background: #1e1e2e;
+  border: 1px solid #2a2a3e;
+  border-radius: 12px;
+  padding: 40px 48px;
+  text-align: center;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+  max-width: 420px;
+}
+
+.signin-card h1 {
+  font-size: 1.4rem;
+  margin-bottom: 8px;
+  color: #f0f0f8;
+}
+
+.signin-card p {
+  font-size: 0.88rem;
+  color: #aaa;
+  margin-bottom: 24px;
+  line-height: 1.55;
+}
+
+.signin-btn {
+  background: #7c6af7;
+  color: #fff;
+  border: none;
+  padding: 11px 22px;
+  border-radius: 6px;
+  font-size: 0.92rem;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.signin-btn:hover {
+  background: #6a5ae0;
+}
+
+/* User chip in the sidebar header */
+.user-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.user-chip img {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1px solid #3a3a55;
+}
+
+.signout-link {
+  background: none;
+  border: none;
+  color: #888aaa;
+  cursor: pointer;
+  font-size: 0.95rem;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.signout-link:hover {
+  background: #2a2a3e;
+  color: #fff;
+}

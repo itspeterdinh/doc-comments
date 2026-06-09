@@ -1,5 +1,12 @@
 import { initializeApp } from 'firebase/app';
 import { getDatabase, ref, get, set } from 'firebase/database';
+import {
+  getAuth,
+  GoogleAuthProvider,
+  signInWithPopup,
+  signOut,
+  onAuthStateChanged,
+} from 'firebase/auth';
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -11,16 +18,40 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
-const ANNOTATIONS_PATH = 'annotations';
+const auth = getAuth(app);
 
-export async function loadFromCloud() {
-  const snap = await get(ref(db, ANNOTATIONS_PATH));
+// ---- Auth ----
+const provider = new GoogleAuthProvider();
+
+export function signInWithGoogle() {
+  return signInWithPopup(auth, provider);
+}
+
+export function signOutUser() {
+  return signOut(auth);
+}
+
+export function onUserChange(cb) {
+  return onAuthStateChanged(auth, cb);
+}
+
+export function getCurrentUser() {
+  return auth.currentUser;
+}
+
+// ---- Per-user annotations ----
+function userPath(uid) {
+  if (!uid) throw new Error('No signed-in user');
+  return `users/${uid}/annotations`;
+}
+
+export async function loadFromCloud(uid) {
+  const snap = await get(ref(db, userPath(uid)));
   if (!snap.exists()) return null;
   const value = snap.val();
-  // Firebase doesn't preserve arrays-of-objects perfectly; normalize to array
   return Array.isArray(value) ? value : Object.values(value);
 }
 
-export async function saveToCloud(annotations) {
-  await set(ref(db, ANNOTATIONS_PATH), annotations);
+export async function saveToCloud(uid, annotations) {
+  await set(ref(db, userPath(uid)), annotations);
 }
