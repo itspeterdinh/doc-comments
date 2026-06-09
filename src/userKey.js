@@ -1,4 +1,22 @@
 const STORAGE_KEY = 'userOpenAIKey';
+const SCROLL_SPEED_KEY = 'answerScrollSpeed';
+const DEFAULT_SCROLL_SPEED = 7;
+
+export function getScrollSpeed() {
+  try {
+    const v = parseFloat(localStorage.getItem(SCROLL_SPEED_KEY));
+    if (Number.isFinite(v) && v > 0) return v;
+  } catch {/* ignore */}
+  return DEFAULT_SCROLL_SPEED;
+}
+
+export function setScrollSpeed(value) {
+  try {
+    if (Number.isFinite(value) && value > 0) {
+      localStorage.setItem(SCROLL_SPEED_KEY, String(value));
+    }
+  } catch {/* ignore */}
+}
 
 export function getUserKey() {
   try {

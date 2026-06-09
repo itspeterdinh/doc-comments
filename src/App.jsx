@@ -22,7 +22,7 @@ import {
   arrayMove,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { getUserKey, setUserKey, testOpenAIKey } from './userKey';
+import { getUserKey, setUserKey, testOpenAIKey, getScrollSpeed, setScrollSpeed } from './userKey';
 import './App.css';
 
 // Always work with reminder as an array of variants.
@@ -56,6 +56,7 @@ function openAnswerWindow(annotation, winRef) {
   winRef.current = w;
   const body = annotation.answer.replace(/\n/g, '<br>');
   const title = primaryReminder(annotation);
+  const scrollSpeed = getScrollSpeed();
   w.document.write(`<!DOCTYPE html>
 <html>
 <head>
@@ -126,7 +127,7 @@ function openAnswerWindow(annotation, winRef) {
         autoScrollId = null;
         return;
       }
-      const PIXELS_PER_SEC = 7; // tune speed here
+      const PIXELS_PER_SEC = ${scrollSpeed}; // from user settings
       let lastT = performance.now();
       let pos = window.scrollY; // float; accumulates sub-pixel progress
       const step = (t) => {
@@ -283,6 +284,7 @@ function SettingsModal({ onClose }) {
   const [reveal, setReveal] = useState(false);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState(null); // { ok, message }
+  const [speed, setSpeed] = useState(getScrollSpeed());
 
   async function runTest() {
     setTesting(true);
@@ -302,6 +304,7 @@ function SettingsModal({ onClose }) {
 
   function save() {
     setUserKey(key);
+    setScrollSpeed(speed);
     onClose();
   }
   function clear() {
@@ -340,6 +343,23 @@ function SettingsModal({ onClose }) {
             </div>
           )}
         </div>
+        <label>
+          Answer popup auto-scroll speed
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <input
+              type="range"
+              min="1"
+              max="100"
+              step="1"
+              value={speed}
+              onChange={(e) => setSpeed(parseFloat(e.target.value))}
+              style={{ flex: 1 }}
+            />
+            <span style={{ minWidth: 80, fontSize: '0.8rem', color: '#aaa' }}>
+              {speed} px/sec
+            </span>
+          </div>
+        </label>
         <div
           className="modal-actions"
           style={{ justifyContent: 'space-between' }}
