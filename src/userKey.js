@@ -29,3 +29,24 @@ export function resolveOpenAIKey() {
   if (user) return user;
   return import.meta.env.VITE_OPENAI_API_KEY || '';
 }
+
+/**
+ * Quick validation: makes a cheap call to /v1/models and returns
+ * { ok: true } or { ok: false, message }.
+ * /v1/models is auth-required, near-zero cost, returns fast.
+ */
+export async function testOpenAIKey(key) {
+  if (!key || !key.trim()) return { ok: false, message: 'Empty key' };
+  try {
+    const res = await fetch('https://api.openai.com/v1/models', {
+      headers: { Authorization: `Bearer ${key.trim()}` },
+    });
+    if (res.ok) return { ok: true };
+    if (res.status === 401) return { ok: false, message: 'Invalid key (401)' };
+    if (res.status === 429) return { ok: false, message: 'Rate-limited or out of quota (429)' };
+    const text = await res.text();
+    return { ok: false, message: `HTTP ${res.status}: ${text.slice(0, 120)}` };
+  } catch (e) {
+    return { ok: false, message: e.message || 'Network error' };
+  }
+}

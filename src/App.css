@@ -894,3 +894,17 @@ body {
   background: #2a2a3e;
   color: #fff;
 }
+
+.key-test {
+  margin-left: 10px;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.key-test--ok {
+  color: #4ad991;
+}
+
+.key-test--bad {
+  color: #ff7a7a;
+}

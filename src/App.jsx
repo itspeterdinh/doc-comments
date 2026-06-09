@@ -22,7 +22,7 @@ import {
   arrayMove,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { getUserKey, setUserKey } from './userKey';
+import { getUserKey, setUserKey, testOpenAIKey } from './userKey';
 import './App.css';
 
 // Always work with reminder as an array of variants.
@@ -281,6 +281,16 @@ function EditorModal({ initial, onSave, onClose }) {
 function SettingsModal({ onClose }) {
   const [key, setKey] = useState(getUserKey());
   const [reveal, setReveal] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState(null); // { ok, message }
+
+  async function runTest() {
+    setTesting(true);
+    setTestResult(null);
+    const result = await testOpenAIKey(key);
+    setTestResult(result);
+    setTesting(false);
+  }
 
   useEffect(() => {
     const onKey = (e) => {
@@ -346,6 +356,21 @@ function SettingsModal({ onClose }) {
               >
                 Clear saved key
               </button>
+            )}
+            <button
+              onClick={runTest}
+              disabled={testing || !key.trim()}
+              style={{ marginLeft: 6 }}
+            >
+              {testing ? 'Testing…' : 'Test key'}
+            </button>
+            {testResult && (
+              <span
+                className={`key-test ${testResult.ok ? 'key-test--ok' : 'key-test--bad'}`}
+                title={testResult.message || ''}
+              >
+                {testResult.ok ? '✓ Key works' : `✕ ${testResult.message}`}
+              </span>
             )}
           </div>
           <div>
