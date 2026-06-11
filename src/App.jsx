@@ -5,6 +5,9 @@ import {
   signInWithGoogle,
   signOutUser,
   onUserChange,
+  appendHistory,
+  loadHistory,
+  clearHistory,
 } from './firebase';
 import { embed, cosine, pickBestTitle } from './openai';
 import { transcribe } from './whisper';
@@ -429,6 +432,30 @@ export default function App() {
   }, []);
   const [editing, setEditing] = useState(null); // null | { ann } | { ann: null } for new
   const [showSettings, setShowSettings] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+  const [history, setHistory] = useState([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+
+  async function openHistory() {
+    if (!user) return;
+    setShowHistory(true);
+    setHistoryLoading(true);
+    try {
+      const list = await loadHistory(user.uid);
+      setHistory(list);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setHistoryLoading(false);
+    }
+  }
+
+  async function clearAllHistory() {
+    if (!user) return;
+    if (!confirm('Clear all call history?')) return;
+    await clearHistory(user.uid);
+    setHistory([]);
+  }
   const [hasUserKey, setHasUserKey] = useState(!!getUserKey());
 
   function closeSettings() {
@@ -458,22 +485,33 @@ export default function App() {
     return () => clearTimeout(t);
   }, [embeddingStatus.justFinished]);
 
-  async function openTopSemanticMatch(query) {
+  async function openTopSemanticMatch(query, { source } = {}) {
     const items = annotations.filter((a) => a.enabled);
-    if (items.length === 0) return;
+    if (items.length === 0) return null;
     try {
-      // Send all variants joined per item so the router sees every phrasing
       const titles = items.map((a) => getVariants(a).join(' | '));
       const idx = await pickBestTitle(query, titles);
-      console.log('Voice query:', query, '→', titles[idx]);
       const target = items[idx];
+      console.log('Voice query:', query, '→', titles[idx]);
       if (target) {
         openAnswerWindow(target, winRef);
         setSearch('');
         setSelectedSearchIndex(0);
+        // Persist to history if this came from a call recording
+        if (source === 'call' && user) {
+          appendHistory(user.uid, {
+            id: crypto.randomUUID(),
+            timestamp: Date.now(),
+            transcript: query,
+            matchedId: target.id,
+            matchedReminder: primaryReminder(target),
+          }).catch((e) => console.error('History save failed:', e));
+        }
       }
+      return target;
     } catch (e) {
       console.error('Voice match failed:', e);
+      return null;
     }
   }
 
@@ -537,7 +575,7 @@ export default function App() {
       if (fullText) {
         console.log('🔎 Running search on full session:', fullText);
         setSearch(fullText);
-        openTopSemanticMatch(fullText);
+        openTopSemanticMatch(fullText, { source: 'call' });
       }
       return;
     }
@@ -985,6 +1023,13 @@ export default function App() {
               </button>
               <button
                 className="settings-btn"
+                title="Call history"
+                onClick={openHistory}
+              >
+                🕒
+              </button>
+              <button
+                className="settings-btn"
                 title="Settings"
                 onClick={() => setShowSettings(true)}
               >
@@ -1109,6 +1154,44 @@ export default function App() {
       )}
 
       {showSettings && <SettingsModal onClose={closeSettings} />}
+
+      {showHistory && (
+        <div className="modal-backdrop" onClick={() => setShowHistory(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 720 }}>
+            <h3>Call history</h3>
+            {historyLoading ? (
+              <div className="settings-hint">Loading…</div>
+            ) : history.length === 0 ? (
+              <div className="settings-hint">
+                No history yet. When you stop a call recording, the transcript
+                and matched question will appear here.
+              </div>
+            ) : (
+              <ul className="history-list">
+                {history.map((h) => (
+                  <li key={h.id} className="history-item">
+                    <div className="history-meta">
+                      {new Date(h.timestamp).toLocaleString()}
+                    </div>
+                    <div className="history-match">
+                      → <strong>{h.matchedReminder || '(no match)'}</strong>
+                    </div>
+                    <div className="history-transcript">{h.transcript}</div>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <div className="modal-actions" style={{ justifyContent: 'space-between' }}>
+              {history.length > 0 ? (
+                <button className="danger" onClick={clearAllHistory}>
+                  Clear all
+                </button>
+              ) : <span />}
+              <button onClick={() => setShowHistory(false)}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {callConnected && (
         <button

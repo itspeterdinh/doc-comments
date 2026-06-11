@@ -55,3 +55,34 @@ export async function loadFromCloud(uid) {
 export async function saveToCloud(uid, annotations) {
   await set(ref(db, userPath(uid)), annotations);
 }
+
+// ---- Per-user call history ----
+function historyPath(uid) {
+  if (!uid) throw new Error('No signed-in user');
+  return `users/${uid}/history`;
+}
+
+export async function appendHistory(uid, entry) {
+  // Read-modify-write pattern (small list, no race-condition concern for a single user)
+  const r = ref(db, historyPath(uid));
+  const snap = await get(r);
+  const list = snap.exists()
+    ? Array.isArray(snap.val())
+      ? snap.val()
+      : Object.values(snap.val())
+    : [];
+  // Keep most-recent first, cap at 200 to avoid runaway storage
+  const next = [entry, ...list].slice(0, 200);
+  await set(r, next);
+}
+
+export async function loadHistory(uid) {
+  const snap = await get(ref(db, historyPath(uid)));
+  if (!snap.exists()) return [];
+  const v = snap.val();
+  return Array.isArray(v) ? v : Object.values(v);
+}
+
+export async function clearHistory(uid) {
+  await set(ref(db, historyPath(uid)), null);
+}
