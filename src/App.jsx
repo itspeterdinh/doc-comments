@@ -520,6 +520,7 @@ export default function App() {
   const [callListening, setCallListening] = useState(false);
   const callStreamRef = useRef(null);
   const callActiveRef = useRef(false);
+  const toggleCallRecordingRef = useRef(() => {});
 
   async function connectCallTab() {
     if (callConnected) {
@@ -718,6 +719,9 @@ export default function App() {
       });
   }, [user]);
 
+  // Keep the ref pointing at the latest toggle function — no stale closures.
+  toggleCallRecordingRef.current = toggleCallRecording;
+
   // Keyboard shortcuts: Alt+R or Ctrl/Cmd+Z toggles call recording (only when a tab is connected)
   useEffect(() => {
     const onKey = (e) => {
@@ -729,13 +733,12 @@ export default function App() {
         !e.altKey &&
         (e.key === 'z' || e.key === 'Z' || e.code === 'KeyZ');
       if (!isAltR && !isCtrlZ) return;
-      if (!callConnected) return;
       e.preventDefault();
-      toggleCallRecording();
+      toggleCallRecordingRef.current();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [callConnected, callListening]);
+  }, []);
 
   // Save to cloud (debounced) whenever annotations change after initial load
   useEffect(() => {
