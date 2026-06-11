@@ -735,7 +735,7 @@ export default function App() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [callConnected]);
+  }, [callConnected, callListening]);
 
   // Save to cloud (debounced) whenever annotations change after initial load
   useEffect(() => {
