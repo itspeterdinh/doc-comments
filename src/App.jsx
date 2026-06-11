@@ -718,14 +718,20 @@ export default function App() {
       });
   }, [user]);
 
-  // Keyboard shortcut: Alt+R toggles call recording (only when a tab is connected)
+  // Keyboard shortcuts: Alt+R or Ctrl/Cmd+Z toggles call recording (only when a tab is connected)
   useEffect(() => {
     const onKey = (e) => {
-      if (e.altKey && (e.key === 'r' || e.key === 'R' || e.code === 'KeyR')) {
-        if (!callConnected) return;
-        e.preventDefault();
-        toggleCallRecording();
-      }
+      const isAltR =
+        e.altKey && (e.key === 'r' || e.key === 'R' || e.code === 'KeyR');
+      const isCtrlZ =
+        (e.ctrlKey || e.metaKey) &&
+        !e.shiftKey &&
+        !e.altKey &&
+        (e.key === 'z' || e.key === 'Z' || e.code === 'KeyZ');
+      if (!isAltR && !isCtrlZ) return;
+      if (!callConnected) return;
+      e.preventDefault();
+      toggleCallRecording();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -1198,8 +1204,8 @@ export default function App() {
           className={`floating-record ${callListening ? 'listening' : ''}`}
           title={
             callListening
-              ? 'Stop transcribing (Alt+R)'
-              : 'Start transcribing call (Alt+R)'
+              ? 'Stop transcribing (Alt+R or Ctrl+Z)'
+              : 'Start transcribing call (Alt+R or Ctrl+Z)'
           }
           onClick={toggleCallRecording}
         >
