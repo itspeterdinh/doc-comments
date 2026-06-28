@@ -41,8 +41,11 @@ function primaryReminder(ann) {
   return getVariants(ann)[0] || '(untitled)';
 }
 
+// True for actual touch devices (phones/tablets), false for desktops — even when the
+// desktop window is narrowed. Detected via primary input device, not viewport width.
 function isMobileViewport() {
-  return typeof window !== 'undefined' && window.innerWidth <= 768;
+  if (typeof window === 'undefined') return false;
+  return window.matchMedia('(pointer: coarse) and (hover: none)').matches;
 }
 
 function showAnswer(annotation, winRef, openMobileModal) {
