@@ -1,6 +1,22 @@
 const STORAGE_KEY = 'userOpenAIKey';
 const SCROLL_SPEED_KEY = 'answerScrollSpeed';
 const DEFAULT_SCROLL_SPEED = 7;
+const MOBILE_MODE_KEY = 'popupMobileMode';
+
+export function getMobilePopupMode() {
+  try {
+    return localStorage.getItem(MOBILE_MODE_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+export function setMobilePopupMode(on) {
+  try {
+    if (on) localStorage.setItem(MOBILE_MODE_KEY, '1');
+    else localStorage.removeItem(MOBILE_MODE_KEY);
+  } catch {/* ignore */}
+}
 
 export function getScrollSpeed() {
   try {

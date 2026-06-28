@@ -25,7 +25,7 @@ import {
   arrayMove,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { getUserKey, setUserKey, testOpenAIKey, getScrollSpeed, setScrollSpeed } from './userKey';
+import { getUserKey, setUserKey, testOpenAIKey, getScrollSpeed, setScrollSpeed, getMobilePopupMode, setMobilePopupMode } from './userKey';
 import './App.css';
 
 // Always work with reminder as an array of variants.
@@ -124,15 +124,18 @@ function openAnswerWindow(annotation, winRef) {
   if (winRef.current && !winRef.current.closed) {
     winRef.current.close();
   }
+  const mobileMode = getMobilePopupMode();
+  const defaultW = mobileMode ? 414 : 680;
+  const defaultH = mobileMode ? 812 : 520;
   const saved = JSON.parse(localStorage.getItem('answerWindowPos') || '{}');
   const left =
-    saved.left ?? Math.round(window.screenX + (window.outerWidth - 680) / 2);
+    saved.left ?? Math.round(window.screenX + (window.outerWidth - defaultW) / 2);
   const top =
-    saved.top ?? Math.round(window.screenY + (window.outerHeight - 520) / 2);
+    saved.top ?? Math.round(window.screenY + (window.outerHeight - defaultH) / 2);
   const w = window.open(
     '',
     '_blank',
-    `width=680,height=520,left=${left},top=${top},resizable=yes,scrollbars=yes`,
+    `width=${defaultW},height=${defaultH},left=${left},top=${top},resizable=yes,scrollbars=yes`,
   );
   if (!w) return;
   winRef.current = w;
@@ -173,9 +176,12 @@ function openAnswerWindow(annotation, winRef) {
   </style>
   <script>
     window.addEventListener("load", function() {
+      const mobileMode = ${mobileMode};
       const saved = JSON.parse(window.opener && window.opener.localStorage.getItem("answerWindowPos") || "{}");
-      // Prefer saved size; fall back to auto-fit-to-content.
-      if (saved.width != null && saved.height != null) {
+      // In mobile-preview mode: lock to phone dimensions (ignore saved size & don't auto-fit).
+      if (mobileMode) {
+        window.resizeTo(${defaultW}, ${defaultH});
+      } else if (saved.width != null && saved.height != null) {
         window.resizeTo(saved.width, saved.height);
       } else {
         const body = document.body;
@@ -540,7 +546,14 @@ export default function App() {
   const [annotations, setAnnotations] = useState([]);
   const [loaded, setLoaded] = useState(false);
   const [mobileAnswer, setMobileAnswer] = useState(null);
+  const [mobilePopup, setMobilePopup] = useState(getMobilePopupMode());
   const showAnswerFn = (ann) => showAnswer(ann, winRef, setMobileAnswer);
+
+  function togglePopupSize() {
+    const next = !mobilePopup;
+    setMobilePopupMode(next);
+    setMobilePopup(next);
+  }
   const [sidebarOpen, setSidebarOpen] = useState(() => {
     if (typeof window === 'undefined') return true;
     return window.innerWidth > 768;
@@ -1169,6 +1182,13 @@ export default function App() {
                 onClick={() => setEditing({ ann: null })}
               >
                 + New
+              </button>
+              <button
+                className={`settings-btn ${mobilePopup ? 'settings-btn--on' : ''}`}
+                title={mobilePopup ? 'Mobile popup size: ON' : 'Open popup at phone size'}
+                onClick={togglePopupSize}
+              >
+                📱
               </button>
               <button
                 className="settings-btn"

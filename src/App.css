@@ -1106,3 +1106,14 @@ body {
   gap: 6px;
   flex-shrink: 0;
 }
+
+.settings-btn--on {
+  background: #7c6af7;
+  color: #fff;
+  border-color: #7c6af7;
+}
+
+.settings-btn--on:hover {
+  background: #6a5ae0;
+  border-color: #6a5ae0;
+}
