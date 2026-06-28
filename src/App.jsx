@@ -352,6 +352,7 @@ function EditorModal({ initial, onSave, onClose }) {
   const initialVariants = initial ? getVariants(initial).join('\n') : '';
   const [reminder, setReminder] = useState(initialVariants);
   const [answer, setAnswer] = useState(initial?.answer || '');
+  const [category, setCategory] = useState(initial?.category || 'technical');
 
   useEffect(() => {
     const onKey = (e) => {
@@ -367,7 +368,7 @@ function EditorModal({ initial, onSave, onClose }) {
       .map((s) => s.trim())
       .filter(Boolean);
     if (variants.length === 0) return;
-    onSave({ reminder: variants, answer });
+    onSave({ reminder: variants, answer, category });
   }
 
   return (
@@ -385,6 +386,17 @@ function EditorModal({ initial, onSave, onClose }) {
             }
             autoFocus
           />
+        </label>
+        <label>
+          Category
+          <select
+            value={category}
+            onChange={(e) => setCategory(e.target.value)}
+            style={{ width: '100%', padding: '8px 10px', borderRadius: 4, border: '1px solid #3a3a55', background: '#14141f', color: '#f0f0f8', fontFamily: 'inherit' }}
+          >
+            <option value="technical">Technical</option>
+            <option value="behavioral">Behavioral</option>
+          </select>
         </label>
         <label>
           Answer
@@ -543,6 +555,13 @@ export default function App() {
   const [loaded, setLoaded] = useState(false);
   const [mobileAnswer, setMobileAnswer] = useState(null);
   const showAnswerFn = (ann) => showAnswer(ann, winRef, setMobileAnswer);
+  const [sidebarCategory, setSidebarCategory] = useState(() => {
+    try { return localStorage.getItem('sidebarCategory') || 'all'; } catch { return 'all'; }
+  });
+  function changeSidebarCategory(v) {
+    setSidebarCategory(v);
+    try { localStorage.setItem('sidebarCategory', v); } catch {/* ignore */}
+  }
   const [sidebarOpen, setSidebarOpen] = useState(() => {
     if (typeof window === 'undefined') return true;
     return window.innerWidth > 768;
@@ -969,6 +988,10 @@ export default function App() {
   }, [search]);
 
   const visible = annotations.filter((ann) => ann.enabled);
+  const sidebarVisible =
+    sidebarCategory === 'all'
+      ? visible
+      : visible.filter((a) => (a.category || 'technical') === sidebarCategory);
   const sensors = useSensors(useSensor(PointerSensor));
 
   let searchMatches = [];
@@ -1051,6 +1074,7 @@ export default function App() {
           enabled: true,
           reminder: data.reminder,
           answer: data.answer,
+          category: data.category || 'technical',
         },
       ]);
     }
@@ -1111,8 +1135,23 @@ export default function App() {
             </button>
           </div>
         </div>
+        <div className="sidebar-filter">
+          <select
+            className="sidebar-select"
+            value={sidebarCategory}
+            onChange={(e) => changeSidebarCategory(e.target.value)}
+          >
+            <option value="all">All ({visible.length})</option>
+            <option value="technical">
+              Technical ({visible.filter((a) => (a.category || 'technical') === 'technical').length})
+            </option>
+            <option value="behavioral">
+              Behavioral ({visible.filter((a) => a.category === 'behavioral').length})
+            </option>
+          </select>
+        </div>
         <ul className="sidebar-list" onClick={() => isMobileViewport() && setSidebarOpen(false)}>
-          {visible.map((ann, index) => (
+          {sidebarVisible.map((ann, index) => (
             <SidebarItem key={ann.id} ann={ann} index={index} onOpen={showAnswerFn} />
           ))}
         </ul>
