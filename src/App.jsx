@@ -41,6 +41,85 @@ function primaryReminder(ann) {
   return getVariants(ann)[0] || '(untitled)';
 }
 
+function isMobileViewport() {
+  return typeof window !== 'undefined' && window.innerWidth <= 768;
+}
+
+function showAnswer(annotation, winRef, openMobileModal) {
+  if (isMobileViewport()) {
+    openMobileModal(annotation);
+    return;
+  }
+  openAnswerWindow(annotation, winRef);
+}
+
+function MobileAnswerModal({ annotation, onClose }) {
+  const [ttsState, setTtsState] = useState('idle');
+
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  useEffect(() => {
+    return () => window.speechSynthesis && window.speechSynthesis.cancel();
+  }, []);
+
+  function toggleSpeak() {
+    const synth = window.speechSynthesis;
+    if (!synth) {
+      alert('Speech synthesis is not supported in this browser.');
+      return;
+    }
+    if (synth.speaking && !synth.paused) {
+      synth.pause();
+      setTtsState('paused');
+      return;
+    }
+    if (synth.paused) {
+      synth.resume();
+      setTtsState('speaking');
+      return;
+    }
+    synth.cancel();
+    const text = (primaryReminder(annotation) + '. ' + (annotation.answer || '')).trim();
+    const utter = new SpeechSynthesisUtterance(text);
+    utter.rate = 1;
+    utter.pitch = 1;
+    utter.onend = () => setTtsState('idle');
+    utter.onerror = () => setTtsState('idle');
+    synth.speak(utter);
+    setTtsState('speaking');
+  }
+
+  if (!annotation) return null;
+  const ttsLabel = ttsState === 'speaking' ? '⏸' : ttsState === 'paused' ? '▶' : '🔊';
+  const ttsTitle = ttsState === 'speaking' ? 'Pause' : ttsState === 'paused' ? 'Resume' : 'Read aloud';
+  return (
+    <div className="answer-modal-backdrop" onClick={onClose}>
+      <div className="answer-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="answer-modal-header">
+          <h2>{primaryReminder(annotation)}</h2>
+          <div className="answer-modal-actions">
+            <button className="answer-modal-close" onClick={toggleSpeak} title={ttsTitle}>
+              {ttsLabel}
+            </button>
+            <button className="answer-modal-close" onClick={onClose} title="Close">✕</button>
+          </div>
+        </div>
+        <div className="answer-modal-body">
+          {(annotation.answer || '').split('\n').map((line, i) => (
+            <p key={i}>{line || ' '}</p>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function openAnswerWindow(annotation, winRef) {
   if (winRef.current && !winRef.current.closed) {
     winRef.current.close();
@@ -149,9 +228,51 @@ function openAnswerWindow(annotation, winRef) {
       // Start from current position (top by default)
       autoScrollId = requestAnimationFrame(step);
     });
+    // Text-to-speech toggle
+    function ttsToggle(btn) {
+      const synth = window.speechSynthesis;
+      if (!synth) { alert('Speech synthesis not supported.'); return; }
+      if (synth.speaking && !synth.paused) {
+        synth.pause();
+        btn.textContent = '▶';
+        return;
+      }
+      if (synth.paused) {
+        synth.resume();
+        btn.textContent = '⏸';
+        return;
+      }
+      synth.cancel();
+      const heading = document.querySelector('h2')?.innerText || '';
+      const body = document.querySelector('p')?.innerText || '';
+      const utter = new SpeechSynthesisUtterance(heading + '. ' + body);
+      utter.rate = 1;
+      utter.pitch = 1;
+      utter.onend = () => { btn.textContent = '🔊'; };
+      utter.onerror = () => { btn.textContent = '🔊'; };
+      synth.speak(utter);
+      btn.textContent = '⏸';
+    }
+    window.addEventListener('beforeunload', function() {
+      window.speechSynthesis && window.speechSynthesis.cancel();
+    });
   </script>
+  <style>
+    .tts-btn {
+      position: fixed; top: 14px; right: 14px;
+      width: 36px; height: 36px; border-radius: 50%;
+      background: #232336; color: #e4e4ec;
+      border: 1px solid #3a3a55;
+      font-size: 1rem; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+      z-index: 100;
+    }
+    .tts-btn:hover { background: #2e2e46; border-color: #7c6af7; }
+  </style>
 </head>
 <body>
+  <button class="tts-btn" title="Read aloud" onclick="ttsToggle(this)">🔊</button>
   <h2>${title}</h2>
   <p>${body}</p>
 </body>
@@ -159,16 +280,16 @@ function openAnswerWindow(annotation, winRef) {
   w.document.close();
 }
 
-function SidebarItem({ ann, index, winRef }) {
+function SidebarItem({ ann, index, onOpen }) {
   return (
-    <li className="sidebar-item" onClick={() => openAnswerWindow(ann, winRef)}>
+    <li className="sidebar-item" onClick={() => onOpen(ann)}>
       <span className="sidebar-index">{index}</span>
       <span className="sidebar-reminder">{primaryReminder(ann)}</span>
     </li>
   );
 }
 
-function DashboardRow({ ann, onToggle, onEdit, onDelete, winRef }) {
+function DashboardRow({ ann, onToggle, onEdit, onDelete, onOpen }) {
   const {
     attributes,
     listeners,
@@ -210,7 +331,7 @@ function DashboardRow({ ann, onToggle, onEdit, onDelete, winRef }) {
       <td className="cell-actions">
         <button
           className="dash-btn"
-          onClick={() => openAnswerWindow(ann, winRef)}
+          onClick={() => onOpen(ann)}
         >
           View
         </button>
@@ -418,6 +539,12 @@ export default function App() {
   const [authReady, setAuthReady] = useState(false);
   const [annotations, setAnnotations] = useState([]);
   const [loaded, setLoaded] = useState(false);
+  const [mobileAnswer, setMobileAnswer] = useState(null);
+  const showAnswerFn = (ann) => showAnswer(ann, winRef, setMobileAnswer);
+  const [sidebarOpen, setSidebarOpen] = useState(() => {
+    if (typeof window === 'undefined') return true;
+    return window.innerWidth > 768;
+  });
 
   useEffect(() => {
     return onUserChange((u) => {
@@ -494,7 +621,7 @@ export default function App() {
       const target = items[idx];
       console.log('Voice query:', query, '→', titles[idx]);
       if (target) {
-        openAnswerWindow(target, winRef);
+        showAnswer(target, winRef, setMobileAnswer);
         setSearch('');
         setSelectedSearchIndex(0);
         // Persist to history if this came from a call recording
@@ -876,7 +1003,7 @@ export default function App() {
       e.preventDefault();
       const target = searchMatches[selectedSearchIndex];
       if (target) {
-        openAnswerWindow(target, winRef);
+        showAnswer(target, winRef, setMobileAnswer);
         setSearch('');
         setSelectedSearchIndex(0);
       }
@@ -954,8 +1081,21 @@ export default function App() {
   }
 
   return (
-    <div className="layout">
-      <aside className="sidebar">
+    <div className={`layout ${sidebarOpen ? 'layout--sidebar-open' : ''}`}>
+      <button
+        className="sidebar-toggle"
+        onClick={() => setSidebarOpen((o) => !o)}
+        aria-label={sidebarOpen ? 'Close sidebar' : 'Open sidebar'}
+      >
+        {sidebarOpen ? '✕' : '☰'}
+      </button>
+      {sidebarOpen && (
+        <div
+          className="sidebar-backdrop"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+      <aside className={`sidebar ${sidebarOpen ? 'sidebar--open' : ''}`}>
         <div className="sidebar-header">
           <span>Interview Questions</span>
           <div className="user-chip" title={user.email || user.displayName}>
@@ -969,9 +1109,9 @@ export default function App() {
             </button>
           </div>
         </div>
-        <ul className="sidebar-list">
+        <ul className="sidebar-list" onClick={() => isMobileViewport() && setSidebarOpen(false)}>
           {visible.map((ann, index) => (
-            <SidebarItem key={ann.id} ann={ann} index={index} winRef={winRef} />
+            <SidebarItem key={ann.id} ann={ann} index={index} onOpen={showAnswerFn} />
           ))}
         </ul>
       </aside>
@@ -1097,7 +1237,7 @@ export default function App() {
                     }
                     onMouseEnter={() => setSelectedSearchIndex(i)}
                     onClick={() => {
-                      openAnswerWindow(ann, winRef);
+                      showAnswer(ann, winRef, setMobileAnswer);
                       setSearch('');
                       setSelectedSearchIndex(0);
                     }}
@@ -1143,7 +1283,7 @@ export default function App() {
                         onToggle={toggleEnabled}
                         onEdit={(a) => setEditing({ ann: a })}
                         onDelete={deleteAnnotation}
-                        winRef={winRef}
+                        onOpen={showAnswerFn}
                       />
                     ))}
                   </SortableContext>
@@ -1163,6 +1303,13 @@ export default function App() {
       )}
 
       {showSettings && <SettingsModal onClose={closeSettings} />}
+
+      {mobileAnswer && (
+        <MobileAnswerModal
+          annotation={mobileAnswer}
+          onClose={() => setMobileAnswer(null)}
+        />
+      )}
 
       {showHistory && (
         <div className="modal-backdrop" onClick={() => setShowHistory(false)}>
