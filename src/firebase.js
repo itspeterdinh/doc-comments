@@ -86,3 +86,21 @@ export async function loadHistory(uid) {
 export async function clearHistory(uid) {
   await set(ref(db, historyPath(uid)), null);
 }
+
+// ---- Per-user categories ----
+function categoriesPath(uid) {
+  if (!uid) throw new Error('No signed-in user');
+  return `users/${uid}/categories`;
+}
+
+export async function loadCategories(uid) {
+  const snap = await get(ref(db, categoriesPath(uid)));
+  if (!snap.exists()) return [];
+  const v = snap.val();
+  const list = Array.isArray(v) ? v : Object.values(v);
+  return list.filter((c) => typeof c === 'string' && c.trim());
+}
+
+export async function saveCategories(uid, categories) {
+  await set(ref(db, categoriesPath(uid)), categories);
+}

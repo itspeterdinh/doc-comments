@@ -8,6 +8,8 @@ import {
   appendHistory,
   loadHistory,
   clearHistory,
+  loadCategories,
+  saveCategories,
 } from './firebase';
 import { embed, cosine, pickBestTitle } from './openai';
 import { transcribe } from './whisper';
@@ -282,16 +284,45 @@ function openAnswerWindow(annotation, winRef) {
   w.document.close();
 }
 
-function SidebarItem({ ann, index, onOpen }) {
+// Questions saved before categories existed are treated as technical,
+// matching how the sidebar filter has always counted them.
+const DEFAULT_CATEGORY = 'technical';
+const BUILT_IN_CATEGORIES = ['technical', 'behavioral'];
+
+function annCategory(ann) {
+  const c = typeof ann.category === 'string' ? ann.category.trim() : '';
+  return c || DEFAULT_CATEGORY;
+}
+
+function categoryLabel(c) {
+  return c.charAt(0).toUpperCase() + c.slice(1);
+}
+
+function SidebarItem({ ann, index, onOpen, showCategory }) {
   return (
     <li className="sidebar-item" onClick={() => onOpen(ann)}>
       <span className="sidebar-index">{index}</span>
-      <span className="sidebar-reminder">{primaryReminder(ann)}</span>
+      <span className="sidebar-body">
+        <span className="sidebar-reminder">{primaryReminder(ann)}</span>
+        {showCategory && (
+          <span className="chip chip--sm">
+            {categoryLabel(annCategory(ann))}
+          </span>
+        )}
+      </span>
     </li>
   );
 }
 
-function DashboardRow({ ann, onToggle, onEdit, onDelete, onOpen }) {
+function DashboardRow({
+  ann,
+  onToggle,
+  onEdit,
+  onDelete,
+  onOpen,
+  categories,
+  onCategoryChange,
+}) {
   const {
     attributes,
     listeners,
@@ -330,6 +361,19 @@ function DashboardRow({ ann, onToggle, onEdit, onDelete, onOpen }) {
         </label>
       </td>
       <td className="cell-reminder">{primaryReminder(ann)}</td>
+      <td className="cell-category">
+        <select
+          className="category-cell-select"
+          value={annCategory(ann)}
+          onChange={(e) => onCategoryChange(ann.id, e.target.value)}
+        >
+          {categories.map((c) => (
+            <option key={c} value={c}>
+              {categoryLabel(c)}
+            </option>
+          ))}
+        </select>
+      </td>
       <td className="cell-actions">
         <button
           className="dash-btn"
@@ -348,11 +392,21 @@ function DashboardRow({ ann, onToggle, onEdit, onDelete, onOpen }) {
   );
 }
 
-function EditorModal({ initial, onSave, onClose }) {
+function EditorModal({
+  initial,
+  onSave,
+  onClose,
+  categories,
+  defaultCategory,
+}) {
   const initialVariants = initial ? getVariants(initial).join('\n') : '';
   const [reminder, setReminder] = useState(initialVariants);
   const [answer, setAnswer] = useState(initial?.answer || '');
-  const [category, setCategory] = useState(initial?.category || 'technical');
+  const [category, setCategory] = useState(
+    initial ? annCategory(initial) : defaultCategory || DEFAULT_CATEGORY,
+  );
+  const [newCategory, setNewCategory] = useState('');
+  const [addingCategory, setAddingCategory] = useState(false);
 
   useEffect(() => {
     const onKey = (e) => {
@@ -368,7 +422,8 @@ function EditorModal({ initial, onSave, onClose }) {
       .map((s) => s.trim())
       .filter(Boolean);
     if (variants.length === 0) return;
-    onSave({ reminder: variants, answer, category });
+    const chosen = addingCategory ? newCategory.trim() : category;
+    onSave({ reminder: variants, answer, category: chosen || DEFAULT_CATEGORY });
   }
 
   return (
@@ -389,14 +444,42 @@ function EditorModal({ initial, onSave, onClose }) {
         </label>
         <label>
           Category
-          <select
-            value={category}
-            onChange={(e) => setCategory(e.target.value)}
-            style={{ width: '100%', padding: '8px 10px', borderRadius: 4, border: '1px solid #3a3a55', background: '#14141f', color: '#f0f0f8', fontFamily: 'inherit' }}
-          >
-            <option value="technical">Technical</option>
-            <option value="behavioral">Behavioral</option>
-          </select>
+          {addingCategory ? (
+            <div className="field-row">
+              <input
+                type="text"
+                value={newCategory}
+                placeholder="New category name"
+                onChange={(e) => setNewCategory(e.target.value)}
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  setAddingCategory(false);
+                  setNewCategory('');
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          ) : (
+            <div className="field-row">
+              <select
+                className="select"
+                value={category}
+                onChange={(e) => setCategory(e.target.value)}
+              >
+                {categories.map((c) => (
+                  <option key={c} value={c}>
+                    {categoryLabel(c)}
+                  </option>
+                ))}
+              </select>
+              <button type="button" onClick={() => setAddingCategory(true)}>
+                + New category
+              </button>
+            </div>
+          )}
         </label>
         <label>
           Answer
@@ -558,6 +641,10 @@ export default function App() {
   const [sidebarCategory, setSidebarCategory] = useState(() => {
     try { return localStorage.getItem('sidebarCategory') || 'all'; } catch { return 'all'; }
   });
+  const [categories, setCategories] = useState([]);
+  const [categoriesLoaded, setCategoriesLoaded] = useState(false);
+  const [addingCategory, setAddingCategory] = useState(false);
+  const [newCategory, setNewCategory] = useState('');
   function changeSidebarCategory(v) {
     setSidebarCategory(v);
     try { localStorage.setItem('sidebarCategory', v); } catch {/* ignore */}
@@ -574,6 +661,8 @@ export default function App() {
       if (!u) {
         // Signed out — clear local data
         setAnnotations([]);
+        setCategories([]);
+        setCategoriesLoaded(false);
         setLoaded(false);
       }
     });
@@ -847,6 +936,21 @@ export default function App() {
     resetSilenceTimer(); // start the timer immediately in case nothing is said
   }
 
+  // Load this user's custom categories whenever they sign in / change
+  useEffect(() => {
+    if (!user) return;
+    loadCategories(user.uid)
+      .then((list) => {
+        setCategories(list);
+        setCategoriesLoaded(true);
+      })
+      .catch((err) => {
+        console.error(err);
+        setCategories([]);
+        setCategoriesLoaded(true);
+      });
+  }, [user]);
+
   // Load this user's annotations whenever they sign in / change
   useEffect(() => {
     if (!user) return;
@@ -896,6 +1000,15 @@ export default function App() {
     }, 500);
     return () => clearTimeout(t);
   }, [annotations, loaded, user]);
+
+  // Save custom categories to cloud (debounced) once they have loaded
+  useEffect(() => {
+    if (!categoriesLoaded || !user) return;
+    const t = setTimeout(() => {
+      saveCategories(user.uid, categories).catch(console.error);
+    }, 500);
+    return () => clearTimeout(t);
+  }, [categories, categoriesLoaded, user]);
 
   // Generate embeddings for any annotations missing a current-version embedding.
   // Bump EMBED_VERSION when changing what we embed (e.g. title-only → title+answer).
@@ -988,10 +1101,55 @@ export default function App() {
   }, [search]);
 
   const visible = annotations.filter((ann) => ann.enabled);
+
+  // Built-ins first, then the user's own categories plus anything still
+  // referenced by a question, alphabetically.
+  const allCategories = (() => {
+    const extra = new Set();
+    categories.forEach((c) => c.trim() && extra.add(c.trim()));
+    annotations.forEach((a) => extra.add(annCategory(a)));
+    BUILT_IN_CATEGORIES.forEach((c) => extra.delete(c));
+    return [...BUILT_IN_CATEGORIES, ...[...extra].sort((a, b) => a.localeCompare(b))];
+  })();
+
   const sidebarVisible =
     sidebarCategory === 'all'
       ? visible
-      : visible.filter((a) => (a.category || 'technical') === sidebarCategory);
+      : visible.filter((a) => annCategory(a) === sidebarCategory);
+
+  function addCategory(e) {
+    e?.preventDefault();
+    const name = newCategory.trim();
+    if (!name) return;
+    const existing = allCategories.find(
+      (c) => c.toLowerCase() === name.toLowerCase(),
+    );
+    if (!existing) setCategories((prev) => [...prev, name]);
+    changeSidebarCategory(existing || name);
+    setNewCategory('');
+    setAddingCategory(false);
+  }
+
+  function deleteCategory(name) {
+    const used = annotations.filter((a) => annCategory(a) === name).length;
+    const message = used
+      ? `Delete category "${categoryLabel(name)}"? ${used} question(s) will move to ${categoryLabel(DEFAULT_CATEGORY)}.`
+      : `Delete category "${categoryLabel(name)}"?`;
+    if (!confirm(message)) return;
+    setCategories((prev) => prev.filter((c) => c !== name));
+    setAnnotations((prev) =>
+      prev.map((a) =>
+        annCategory(a) === name ? { ...a, category: DEFAULT_CATEGORY } : a,
+      ),
+    );
+    changeSidebarCategory('all');
+  }
+
+  function setAnnotationCategory(id, category) {
+    setAnnotations((prev) =>
+      prev.map((a) => (a.id === id ? { ...a, category } : a)),
+    );
+  }
   const sensors = useSensors(useSensor(PointerSensor));
 
   let searchMatches = [];
@@ -1060,6 +1218,10 @@ export default function App() {
   }
 
   function saveEdit(data) {
+    const cat = (data.category || '').trim();
+    if (cat && !allCategories.includes(cat)) {
+      setCategories((prev) => [...prev, cat]);
+    }
     if (editing?.ann) {
       // edit existing
       setAnnotations((prev) =>
@@ -1074,7 +1236,7 @@ export default function App() {
           enabled: true,
           reminder: data.reminder,
           answer: data.answer,
-          category: data.category || 'technical',
+          category: data.category || DEFAULT_CATEGORY,
         },
       ]);
     }
@@ -1123,11 +1285,23 @@ export default function App() {
       )}
       <aside className={`sidebar ${sidebarOpen ? 'sidebar--open' : ''}`}>
         <div className="sidebar-header">
-          <span>Interview Questions</span>
+          <div className="sidebar-brand">
+            <span className="sidebar-title">Interview Questions</span>
+            <span className="sidebar-subtitle">
+              {sidebarVisible.length} shown · {annotations.length} total
+            </span>
+          </div>
           <div className="user-chip" title={user.email || user.displayName}>
             {user.photoURL && <img src={user.photoURL} alt="" />}
             <button
-              className="signout-link"
+              className="icon-round"
+              onClick={openHistory}
+              title="Call history"
+            >
+              🕒
+            </button>
+            <button
+              className="icon-round"
               onClick={() => signOutUser()}
               title="Sign out"
             >
@@ -1136,24 +1310,93 @@ export default function App() {
           </div>
         </div>
         <div className="sidebar-filter">
-          <select
-            className="sidebar-select"
-            value={sidebarCategory}
-            onChange={(e) => changeSidebarCategory(e.target.value)}
-          >
-            <option value="all">All ({visible.length})</option>
-            <option value="technical">
-              Technical ({visible.filter((a) => (a.category || 'technical') === 'technical').length})
-            </option>
-            <option value="behavioral">
-              Behavioral ({visible.filter((a) => a.category === 'behavioral').length})
-            </option>
-          </select>
+          {addingCategory ? (
+            <form className="category-bar" onSubmit={addCategory}>
+              <input
+                type="text"
+                className="category-input"
+                placeholder="New category name…"
+                value={newCategory}
+                onChange={(e) => setNewCategory(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') {
+                    setAddingCategory(false);
+                    setNewCategory('');
+                  }
+                }}
+                autoFocus
+              />
+              <button
+                type="submit"
+                className="category-btn category-btn--primary"
+                disabled={!newCategory.trim()}
+                title="Add category"
+              >
+                Add
+              </button>
+              <button
+                type="button"
+                className="category-btn"
+                onClick={() => {
+                  setAddingCategory(false);
+                  setNewCategory('');
+                }}
+                title="Cancel"
+              >
+                ✕
+              </button>
+            </form>
+          ) : (
+            <div className="category-bar">
+              <div className="select-wrap">
+                <select
+                  className="sidebar-select"
+                  value={sidebarCategory}
+                  onChange={(e) => changeSidebarCategory(e.target.value)}
+                >
+                  <option value="all">All ({visible.length})</option>
+                  {allCategories.map((c) => (
+                    <option key={c} value={c}>
+                      {categoryLabel(c)} (
+                      {visible.filter((a) => annCategory(a) === c).length})
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <button
+                className="category-btn category-btn--primary"
+                onClick={() => setAddingCategory(true)}
+                title="Add a category"
+              >
+                + Category
+              </button>
+              {sidebarCategory !== 'all' &&
+                !BUILT_IN_CATEGORIES.includes(sidebarCategory) && (
+                  <button
+                    className="category-btn category-btn--danger"
+                    onClick={() => deleteCategory(sidebarCategory)}
+                    title={`Delete "${categoryLabel(sidebarCategory)}"`}
+                  >
+                    🗑
+                  </button>
+                )}
+            </div>
+          )}
         </div>
         <ul className="sidebar-list" onClick={() => isMobileViewport() && setSidebarOpen(false)}>
-          {sidebarVisible.map((ann, index) => (
-            <SidebarItem key={ann.id} ann={ann} index={index} onOpen={showAnswerFn} />
-          ))}
+          {sidebarVisible.length === 0 ? (
+            <li className="sidebar-empty">Nothing in this category yet.</li>
+          ) : (
+            sidebarVisible.map((ann, index) => (
+              <SidebarItem
+                key={ann.id}
+                ann={ann}
+                index={index}
+                onOpen={showAnswerFn}
+                showCategory={sidebarCategory === 'all'}
+              />
+            ))
+          )}
         </ul>
       </aside>
 
@@ -1303,6 +1546,7 @@ export default function App() {
                     <th></th>
                     <th>Show</th>
                     <th>Reminder</th>
+                    <th>Category</th>
                     <th>Actions</th>
                   </tr>
                 </thead>
@@ -1325,6 +1569,8 @@ export default function App() {
                         onEdit={(a) => setEditing({ ann: a })}
                         onDelete={deleteAnnotation}
                         onOpen={showAnswerFn}
+                        categories={allCategories}
+                        onCategoryChange={setAnnotationCategory}
                       />
                     ))}
                   </SortableContext>
@@ -1340,6 +1586,10 @@ export default function App() {
           initial={editing.ann}
           onSave={saveEdit}
           onClose={() => setEditing(null)}
+          categories={allCategories}
+          defaultCategory={
+            sidebarCategory !== 'all' ? sidebarCategory : DEFAULT_CATEGORY
+          }
         />
       )}
 
