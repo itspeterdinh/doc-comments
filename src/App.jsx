@@ -1275,7 +1275,7 @@ export default function App() {
         onClick={() => setSidebarOpen((o) => !o)}
         aria-label={sidebarOpen ? 'Close sidebar' : 'Open sidebar'}
       >
-        {sidebarOpen ? '✕' : '☰'}
+        {sidebarOpen ? '‹' : '›'}
       </button>
       {sidebarOpen && (
         <div

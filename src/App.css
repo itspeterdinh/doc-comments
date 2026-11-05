@@ -993,25 +993,46 @@ body {
 }
 
 /* ---- Sidebar toggle (all screen sizes) ---- */
+/* Floating collapse handle: tucked against the left edge when the sidebar is
+   closed, centred on the sidebar/main divider when it is open. */
 .sidebar-toggle {
   position: fixed;
-  top: 14px;
-  left: 14px;
+  top: 50%;
+  left: 0;
   z-index: 250;
-  width: 30px;
-  height: 30px;
-  border-radius: 6px;
-  background: #1e1e2e;
+  width: 22px;
+  height: 52px;
+  border-radius: 0 10px 10px 0;
+  background: #23233a;
   border: 1px solid #3a3a55;
-  color: #e4e4ec;
-  font-size: 0.9rem;
+  border-left: none;
+  color: #b9b9d6;
+  font-size: 0.95rem;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.45);
   padding: 0;
   line-height: 1;
+  transform: translateY(-50%);
+  transition:
+    left 0.22s ease,
+    background 0.12s,
+    color 0.12s;
+}
+
+.sidebar-toggle:hover {
+  background: #32324c;
+  color: #fff;
+}
+
+.layout--sidebar-open .sidebar-toggle {
+  left: 360px;
+  width: 26px;
+  border-radius: 999px;
+  border-left: 1px solid #3a3a55;
+  transform: translate(-50%, -50%);
 }
 
 .sidebar {
@@ -1051,8 +1072,11 @@ body {
     background: rgba(0, 0, 0, 0.5);
     z-index: 150;
   }
+  .layout--sidebar-open .sidebar-toggle {
+    left: min(86vw, 320px);
+  }
   .dashboard {
-    padding: 56px 14px 24px;
+    padding: 24px 14px;
   }
   .dashboard-table {
     display: block;
@@ -1171,22 +1195,12 @@ body {
   min-width: 0;
 }
 
-.select-wrap::after {
-  content: '⌄';
-  position: absolute;
-  right: 12px;
-  top: 45%;
-  transform: translateY(-50%);
-  color: #8b8cb0;
-  font-size: 0.9rem;
-  pointer-events: none;
-}
-
 .sidebar-select,
 .category-input {
   width: 100%;
   appearance: none;
-  padding: 9px 30px 9px 12px;
+  -webkit-appearance: none;
+  padding: 9px 34px 9px 12px;
   border: 1px solid #343452;
   background: #14141f;
   color: #e2e2f2;
@@ -1195,6 +1209,13 @@ body {
   font-size: 0.82rem;
   font-weight: 600;
   cursor: pointer;
+}
+
+.sidebar-select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.75 6 6.25 11 1.75' fill='none' stroke='%238b8cb0' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  background-size: 11px 7px;
 }
 
 .category-input {
@@ -1301,13 +1322,16 @@ body {
 
 .category-cell-select {
   width: 100%;
-  background: #1a1a28;
+  appearance: none;
+  -webkit-appearance: none;
+  background: #1a1a28 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.75 6 6.25 11 1.75' fill='none' stroke='%238b8cb0' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right 8px center;
+  background-size: 10px 6px;
   border: 1px solid #2f2f4a;
   border-radius: 6px;
   color: #c8c8e8;
   font-family: inherit;
   font-size: 0.76rem;
-  padding: 5px 8px;
+  padding: 5px 26px 5px 8px;
   cursor: pointer;
 }
 
@@ -1323,28 +1347,53 @@ body {
 /* Modal field rows (select + button side by side) */
 .field-row {
   display: flex;
-  align-items: center;
+  align-items: stretch;
   gap: 8px;
+  min-width: 0;
 }
 
 .field-row .select,
 .field-row input[type='text'] {
-  flex: 1;
+  flex: 1 1 auto;
   min-width: 0;
 }
 
 .field-row .select {
-  background: #14141f;
-  border: 1px solid #343452;
-  border-radius: 6px;
-  color: #e2e2f2;
+  appearance: none;
+  -webkit-appearance: none;
+  background: #14141f url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.75 6 6.25 11 1.75' fill='none' stroke='%238b8cb0' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right 12px center;
+  background-size: 11px 7px;
+  border: 1px solid #3a3a55;
+  border-radius: 4px;
+  color: #f0f0f8;
   font-family: inherit;
-  font-size: 0.85rem;
-  padding: 8px 10px;
+  font-size: 0.88rem;
+  padding: 8px 34px 8px 10px;
   cursor: pointer;
 }
 
 .field-row .select:focus {
   outline: none;
   border-color: #7c6af7;
+}
+
+/* The button beside a field keeps its label on one line and never grows */
+.field-row button {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  padding: 8px 14px;
+  border: 1px solid #3a3a55;
+  background: #2a2a3e;
+  color: #d4d4e4;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-family: inherit;
+  line-height: 1.2;
+}
+
+.field-row button:hover {
+  background: #353550;
+  border-color: #4a4a72;
+  color: #fff;
 }
